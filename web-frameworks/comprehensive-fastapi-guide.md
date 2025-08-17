@@ -2646,7 +2646,1305 @@ async def redoc_html():
     )
 ```
 
-### 12.2 Detailed Endpoint Documentation
+### 12.2 Advanced Schema Generation and Validation
+
+Enhanced schema generation with comprehensive validation:
+
+```python
+from fastapi import FastAPI, Path, Query, Body, Header, Cookie
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from pydantic import BaseModel, Field, validator, root_validator
+from typing import Optional, List, Dict, Any, Union
+from datetime import datetime, date
+from enum import Enum
+import re
+
+# Advanced enums with descriptions
+class SortOrder(str, Enum):
+    """Sort order options"""
+    ASC = "asc"
+    DESC = "desc"
+
+class UserStatus(str, Enum):
+    """User account status with detailed descriptions"""
+    ACTIVE = "active"      # User account is active and fully functional
+    INACTIVE = "inactive"  # User account is temporarily disabled
+    SUSPENDED = "suspended"  # User account is suspended due to violations
+    PENDING = "pending"    # User account is pending email verification
+
+# Complex validation models
+class AdvancedUser(BaseModel):
+    """User model with comprehensive validation and OpenAPI metadata"""
+    
+    id: Optional[int] = Field(
+        None,
+        title="User ID",
+        description="Unique identifier for the user",
+        example=123,
+        ge=1,  # Greater than or equal to 1
+        le=999999999  # Less than or equal to 999,999,999
+    )
+    
+    username: str = Field(
+        title="Username",
+        description="Unique username (3-30 characters, alphanumeric and underscores only)",
+        example="john_doe_2024",
+        min_length=3,
+        max_length=30,
+        regex=r"^[a-zA-Z0-9_]+$"
+    )
+    
+    email: str = Field(
+        title="Email Address",
+        description="Valid email address (will be used for notifications)",
+        example="john.doe@example.com",
+        max_length=254  # RFC 5321 limit
+    )
+    
+    password: Optional[str] = Field(
+        None,
+        title="Password",
+        description="Strong password (8+ chars, must include uppercase, lowercase, number, and special character)",
+        example="MySecure123!",
+        min_length=8,
+        max_length=128
+    )
+    
+    birth_date: Optional[date] = Field(
+        None,
+        title="Birth Date",
+        description="User's date of birth (must be at least 13 years old)",
+        example="1990-05-15"
+    )
+    
+    phone: Optional[str] = Field(
+        None,
+        title="Phone Number",
+        description="International phone number with country code",
+        example="+1-555-123-4567",
+        regex=r"^\+[1-9]\d{1,14}$"  # E.164 format
+    )
+    
+    status: UserStatus = Field(
+        default=UserStatus.PENDING,
+        title="Account Status",
+        description="Current status of the user account"
+    )
+    
+    tags: List[str] = Field(
+        default_factory=list,
+        title="User Tags",
+        description="Tags associated with the user (max 10 tags, each 1-50 characters)",
+        example=["premium", "beta-tester", "early-adopter"],
+        max_items=10
+    )
+    
+    preferences: Dict[str, Any] = Field(
+        default_factory=dict,
+        title="User Preferences",
+        description="User-specific preferences and settings",
+        example={
+            "theme": "dark",
+            "language": "en",
+            "notifications": {
+                "email": True,
+                "push": False
+            }
+        }
+    )
+    
+    metadata: Optional[Dict[str, Union[str, int, bool, float]]] = Field(
+        None,
+        title="Metadata",
+        description="Additional metadata (string, number, or boolean values only)",
+        example={"signup_source": "mobile_app", "referral_code": "ABC123"}
+    )
+    
+    created_at: datetime = Field(
+        title="Created At",
+        description="Timestamp when the user was created (ISO 8601 format)",
+        example="2024-01-15T10:30:00.000Z"
+    )
+    
+    @validator('email')
+    def validate_email(cls, v):
+        """Enhanced email validation"""
+        email_pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
+        if not re.match(email_pattern, v):
+            raise ValueError('Invalid email format')
+        return v.lower()
+    
+    @validator('password')
+    def validate_password(cls, v):
+        """Strong password validation"""
+        if v is None:
+            return v
+        
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters long')
+        
+        if not re.search(r'[A-Z]', v):
+            raise ValueError('Password must contain at least one uppercase letter')
+        
+        if not re.search(r'[a-z]', v):
+            raise ValueError('Password must contain at least one lowercase letter')
+        
+        if not re.search(r'[0-9]', v):
+            raise ValueError('Password must contain at least one number')
+        
+        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', v):
+            raise ValueError('Password must contain at least one special character')
+        
+        return v
+    
+    @validator('birth_date')
+    def validate_birth_date(cls, v):
+        """Age validation"""
+        if v is None:
+            return v
+        
+        today = date.today()
+        age = today.year - v.year - ((today.month, today.day) < (v.month, v.day))
+        
+        if age < 13:
+            raise ValueError('User must be at least 13 years old')
+        
+        if age > 150:
+            raise ValueError('Invalid birth date')
+        
+        return v
+    
+    @validator('tags')
+    def validate_tags(cls, v):
+        """Tag validation"""
+        for tag in v:
+            if not isinstance(tag, str):
+                raise ValueError('Tags must be strings')
+            if len(tag) < 1 or len(tag) > 50:
+                raise ValueError('Each tag must be 1-50 characters long')
+            if not re.match(r'^[a-zA-Z0-9_-]+$', tag):
+                raise ValueError('Tags can only contain letters, numbers, hyphens, and underscores')
+        return v
+    
+    @root_validator
+    def validate_user_data(cls, values):
+        """Cross-field validation"""
+        username = values.get('username')
+        email = values.get('email')
+        
+        # Check if username and email local part are too similar
+        if username and email:
+            email_local = email.split('@')[0]
+            if username.lower() == email_local.lower():
+                raise ValueError('Username cannot be the same as email local part')
+        
+        return values
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "id": 123,
+                "username": "john_doe_2024",
+                "email": "john.doe@example.com",
+                "birth_date": "1990-05-15",
+                "phone": "+1-555-123-4567",
+                "status": "active",
+                "tags": ["premium", "beta-tester"],
+                "preferences": {
+                    "theme": "dark",
+                    "language": "en",
+                    "notifications": {
+                        "email": True,
+                        "push": False,
+                        "sms": True
+                    }
+                },
+                "metadata": {
+                    "signup_source": "web",
+                    "referral_code": "FRIEND123",
+                    "trial_expires": "2024-12-31"
+                },
+                "created_at": "2024-01-15T10:30:00.000Z"
+            }
+        }
+
+# Advanced response models
+class APIResponse(BaseModel):
+    """Standardized API response format"""
+    success: bool = Field(title="Success", description="Indicates if the request was successful")
+    message: str = Field(title="Message", description="Human-readable message")
+    error_code: Optional[str] = Field(None, title="Error Code", description="Machine-readable error code")
+    timestamp: datetime = Field(title="Timestamp", description="Response timestamp")
+    
+    class Config:
+        schema_extra = {
+            "example": {
+                "success": True,
+                "message": "Operation completed successfully",
+                "error_code": None,
+                "timestamp": "2024-01-15T10:30:00.000Z"
+            }
+        }
+
+class UserResponse(APIResponse):
+    """User response with embedded data"""
+    data: AdvancedUser = Field(title="User Data", description="User information")
+
+class PaginatedResponse(APIResponse):
+    """Paginated response format"""
+    data: List[AdvancedUser] = Field(title="Data", description="Array of results")
+    pagination: Dict[str, int] = Field(
+        title="Pagination",
+        description="Pagination information",
+        example={
+            "page": 1,
+            "per_page": 20,
+            "total": 150,
+            "pages": 8,
+            "has_next": True,
+            "has_prev": False
+        }
+    )
+
+# Advanced endpoint with comprehensive OpenAPI metadata
+@app.post(
+    "/users/advanced",
+    response_model=UserResponse,
+    status_code=201,
+    tags=["users"],
+    summary="Create Advanced User",
+    description="""
+    Create a new user with comprehensive validation and metadata support.
+    
+    This endpoint demonstrates advanced FastAPI features:
+    - Complex validation rules
+    - Cross-field validation
+    - Rich OpenAPI documentation
+    - Custom error handling
+    - Comprehensive response models
+    
+    **Validation Rules:**
+    - Username: 3-30 characters, alphanumeric and underscores only
+    - Email: Valid email format, automatically lowercased
+    - Password: Strong password requirements (if provided)
+    - Birth date: Must be at least 13 years old
+    - Phone: International E.164 format
+    - Tags: Max 10 tags, each 1-50 characters, alphanumeric with hyphens/underscores
+    
+    **Security Note:**
+    Password field is write-only and will never be returned in responses.
+    """,
+    responses={
+        201: {
+            "description": "User created successfully",
+            "model": UserResponse,
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": True,
+                        "message": "User created successfully",
+                        "error_code": None,
+                        "timestamp": "2024-01-15T10:30:00.000Z",
+                        "data": AdvancedUser.Config.schema_extra["example"]
+                    }
+                }
+            }
+        },
+        400: {
+            "description": "Validation error",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "message": "Validation failed",
+                        "error_code": "VALIDATION_ERROR",
+                        "timestamp": "2024-01-15T10:30:00.000Z",
+                        "details": [
+                            {
+                                "loc": ["body", "email"],
+                                "msg": "Invalid email format",
+                                "type": "value_error"
+                            }
+                        ]
+                    }
+                }
+            }
+        },
+        409: {
+            "description": "User already exists",
+            "content": {
+                "application/json": {
+                    "example": {
+                        "success": False,
+                        "message": "User with this email already exists",
+                        "error_code": "USER_EXISTS",
+                        "timestamp": "2024-01-15T10:30:00.000Z"
+                    }
+                }
+            }
+        },
+        422: {"$ref": "#/components/responses/ValidationError"}
+    }
+)
+async def create_advanced_user(
+    user: AdvancedUser = Body(
+        title="User Data",
+        description="Complete user information with validation",
+        example=AdvancedUser.Config.schema_extra["example"]
+    ),
+    x_client_version: Optional[str] = Header(
+        None,
+        title="Client Version",
+        description="Version of the client application",
+        example="1.2.3"
+    ),
+    x_device_id: Optional[str] = Header(
+        None,
+        title="Device ID",
+        description="Unique device identifier",
+        example="device-uuid-12345"
+    )
+):
+    """Create a new user with advanced validation"""
+    # Implementation would go here
+    return UserResponse(
+        success=True,
+        message="User created successfully",
+        timestamp=datetime.utcnow(),
+        data=user
+    )
+
+# Advanced query parameters with comprehensive documentation
+@app.get(
+    "/users/search",
+    response_model=PaginatedResponse,
+    tags=["users"],
+    summary="Advanced User Search",
+    description="""
+    Search users with advanced filtering, sorting, and pagination options.
+    
+    **Features:**
+    - Full-text search across multiple fields
+    - Multiple filter combinations
+    - Flexible sorting options
+    - Cursor-based and offset-based pagination
+    - Field selection to reduce response size
+    - Advanced date range filtering
+    
+    **Performance Notes:**
+    - Results are cached for 5 minutes
+    - Maximum 1000 results per request
+    - Search is case-insensitive and supports partial matches
+    """,
+    responses={
+        200: {
+            "description": "Search results",
+            "model": PaginatedResponse
+        },
+        400: {
+            "description": "Invalid search parameters"
+        }
+    }
+)
+async def advanced_user_search(
+    # Search parameters
+    q: Optional[str] = Query(
+        None,
+        title="Search Query",
+        description="Search term to match against username, email, or full name",
+        example="john",
+        min_length=1,
+        max_length=100
+    ),
+    
+    # Filter parameters
+    status: Optional[List[UserStatus]] = Query(
+        None,
+        title="Status Filter",
+        description="Filter by user status (multiple values allowed)",
+        example=["active", "pending"]
+    ),
+    
+    tags: Optional[List[str]] = Query(
+        None,
+        title="Tag Filter",
+        description="Filter by tags (users must have ALL specified tags)",
+        example=["premium", "verified"]
+    ),
+    
+    created_after: Optional[datetime] = Query(
+        None,
+        title="Created After",
+        description="Filter users created after this timestamp",
+        example="2024-01-01T00:00:00Z"
+    ),
+    
+    created_before: Optional[datetime] = Query(
+        None,
+        title="Created Before",
+        description="Filter users created before this timestamp",
+        example="2024-12-31T23:59:59Z"
+    ),
+    
+    age_min: Optional[int] = Query(
+        None,
+        title="Minimum Age",
+        description="Filter users with minimum age",
+        example=18,
+        ge=13,
+        le=150
+    ),
+    
+    age_max: Optional[int] = Query(
+        None,
+        title="Maximum Age",
+        description="Filter users with maximum age",
+        example=65,
+        ge=13,
+        le=150
+    ),
+    
+    # Sorting parameters
+    sort_by: Optional[str] = Query(
+        "created_at",
+        title="Sort Field",
+        description="Field to sort results by",
+        example="username",
+        regex="^(id|username|email|created_at|last_login)$"
+    ),
+    
+    sort_order: SortOrder = Query(
+        SortOrder.DESC,
+        title="Sort Order",
+        description="Sort order (ascending or descending)"
+    ),
+    
+    # Pagination parameters
+    page: int = Query(
+        1,
+        title="Page Number",
+        description="Page number for pagination (1-based)",
+        example=1,
+        ge=1,
+        le=1000
+    ),
+    
+    per_page: int = Query(
+        20,
+        title="Results Per Page",
+        description="Number of results per page",
+        example=20,
+        ge=1,
+        le=100
+    ),
+    
+    cursor: Optional[str] = Query(
+        None,
+        title="Cursor",
+        description="Cursor for cursor-based pagination (alternative to page/per_page)",
+        example="eyJpZCI6MTIzLCJjcmVhdGVkX2F0IjoiMjAyNC0wMS0xNSJ9"
+    ),
+    
+    # Field selection
+    fields: Optional[List[str]] = Query(
+        None,
+        title="Field Selection",
+        description="Select specific fields to include in response (reduces payload size)",
+        example=["id", "username", "email", "status"]
+    ),
+    
+    # Additional options
+    include_inactive: bool = Query(
+        False,
+        title="Include Inactive",
+        description="Include inactive users in results"
+    ),
+    
+    fuzzy_search: bool = Query(
+        False,
+        title="Fuzzy Search",
+        description="Enable fuzzy matching for search terms"
+    )
+):
+    """Advanced user search with comprehensive filtering options"""
+    # Implementation would go here
+    pass
+```
+
+### 12.3 OpenAPI Schema Extensions and Customization
+
+Advanced OpenAPI schema customization with extensions:
+
+```python
+from fastapi import FastAPI
+from fastapi.openapi.utils import get_openapi
+from fastapi.openapi.models import Info, Contact, License, Server
+import json
+
+def create_enhanced_openapi_schema():
+    """Create a comprehensive OpenAPI schema with all advanced features"""
+    
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    # Generate base schema
+    openapi_schema = get_openapi(
+        title="Advanced FastAPI Application",
+        version="3.0.0",
+        description="Comprehensive FastAPI application with advanced OpenAPI features",
+        routes=app.routes
+    )
+    
+    # Enhanced info section
+    openapi_schema["info"] = {
+        **openapi_schema["info"],
+        "termsOfService": "https://example.com/terms/",
+        "contact": {
+            "name": "API Support Team",
+            "url": "https://example.com/contact/",
+            "email": "api-support@example.com"
+        },
+        "license": {
+            "name": "MIT License",
+            "url": "https://opensource.org/licenses/MIT"
+        },
+        "x-logo": {
+            "url": "https://example.com/assets/api-logo.png",
+            "altText": "API Logo",
+            "href": "https://example.com"
+        },
+        "x-apisguru-categories": ["ecommerce", "social", "analytics"],
+        "x-preferred-language": "Python",
+        "x-providerName": "example.com",
+        "x-serviceName": "advanced-api"
+    }
+    
+    # Multiple server environments
+    openapi_schema["servers"] = [
+        {
+            "url": "https://api.example.com/v3",
+            "description": "Production server",
+            "variables": {
+                "region": {
+                    "default": "us-east-1",
+                    "enum": ["us-east-1", "us-west-2", "eu-west-1"],
+                    "description": "Server region"
+                }
+            }
+        },
+        {
+            "url": "https://staging-api.example.com/v3",
+            "description": "Staging server"
+        },
+        {
+            "url": "https://{tenant}.example.com/api/v3",
+            "description": "Tenant-specific server",
+            "variables": {
+                "tenant": {
+                    "default": "demo",
+                    "description": "Tenant identifier"
+                }
+            }
+        }
+    ]
+    
+    # Comprehensive security schemes
+    openapi_schema["components"]["securitySchemes"] = {
+        "BearerAuth": {
+            "type": "http",
+            "scheme": "bearer",
+            "bearerFormat": "JWT",
+            "description": "JWT token authentication"
+        },
+        "ApiKeyAuth": {
+            "type": "apiKey",
+            "in": "header",
+            "name": "X-API-Key",
+            "description": "API key for service-to-service authentication"
+        },
+        "OAuth2": {
+            "type": "oauth2",
+            "description": "OAuth2 authentication",
+            "flows": {
+                "authorizationCode": {
+                    "authorizationUrl": "https://auth.example.com/oauth/authorize",
+                    "tokenUrl": "https://auth.example.com/oauth/token",
+                    "refreshUrl": "https://auth.example.com/oauth/refresh",
+                    "scopes": {
+                        "read": "Read access to protected resources",
+                        "write": "Write access to protected resources",
+                        "admin": "Administrative access to all resources",
+                        "users:read": "Read user information",
+                        "users:write": "Modify user information",
+                        "analytics:read": "Read analytics data"
+                    }
+                },
+                "clientCredentials": {
+                    "tokenUrl": "https://auth.example.com/oauth/token",
+                    "scopes": {
+                        "service": "Service-to-service authentication"
+                    }
+                }
+            }
+        },
+        "OpenIdConnect": {
+            "type": "openIdConnect",
+            "openIdConnectUrl": "https://auth.example.com/.well-known/openid-configuration",
+            "description": "OpenID Connect authentication"
+        }
+    }
+    
+    # Global security requirements
+    openapi_schema["security"] = [
+        {"BearerAuth": []},
+        {"OAuth2": ["read"]},
+        {"ApiKeyAuth": []}
+    ]
+    
+    # Enhanced response schemas
+    openapi_schema["components"]["responses"] = {
+        "Success": {
+            "description": "Successful operation",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "success": {"type": "boolean", "example": True},
+                            "message": {"type": "string", "example": "Operation completed successfully"},
+                            "timestamp": {"type": "string", "format": "date-time"}
+                        }
+                    }
+                }
+            }
+        },
+        "ValidationError": {
+            "description": "Validation error",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "success": {"type": "boolean", "example": False},
+                            "message": {"type": "string", "example": "Validation failed"},
+                            "error_code": {"type": "string", "example": "VALIDATION_ERROR"},
+                            "details": {
+                                "type": "array",
+                                "items": {
+                                    "type": "object",
+                                    "properties": {
+                                        "loc": {"type": "array", "items": {"type": "string"}},
+                                        "msg": {"type": "string"},
+                                        "type": {"type": "string"}
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "Unauthorized": {
+            "description": "Authentication required",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "success": {"type": "boolean", "example": False},
+                            "message": {"type": "string", "example": "Authentication required"},
+                            "error_code": {"type": "string", "example": "UNAUTHORIZED"}
+                        }
+                    }
+                }
+            }
+        },
+        "Forbidden": {
+            "description": "Insufficient permissions",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "success": {"type": "boolean", "example": False},
+                            "message": {"type": "string", "example": "Insufficient permissions"},
+                            "error_code": {"type": "string", "example": "FORBIDDEN"}
+                        }
+                    }
+                }
+            }
+        },
+        "NotFound": {
+            "description": "Resource not found",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "success": {"type": "boolean", "example": False},
+                            "message": {"type": "string", "example": "Resource not found"},
+                            "error_code": {"type": "string", "example": "NOT_FOUND"}
+                        }
+                    }
+                }
+            }
+        },
+        "RateLimited": {
+            "description": "Rate limit exceeded",
+            "content": {
+                "application/json": {
+                    "schema": {
+                        "type": "object",
+                        "properties": {
+                            "success": {"type": "boolean", "example": False},
+                            "message": {"type": "string", "example": "Rate limit exceeded"},
+                            "error_code": {"type": "string", "example": "RATE_LIMITED"},
+                            "retry_after": {"type": "integer", "example": 60}
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    # Webhook definitions
+    openapi_schema["webhooks"] = {
+        "user-created": {
+            "post": {
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {"$ref": "#/components/schemas/AdvancedUser"}
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {
+                        "description": "Webhook received successfully"
+                    }
+                },
+                "summary": "User Created Webhook",
+                "description": "Triggered when a new user account is created"
+            }
+        },
+        "user-updated": {
+            "post": {
+                "requestBody": {
+                    "required": True,
+                    "content": {
+                        "application/json": {
+                            "schema": {
+                                "allOf": [
+                                    {"$ref": "#/components/schemas/AdvancedUser"},
+                                    {
+                                        "type": "object",
+                                        "properties": {
+                                            "previous_values": {
+                                                "type": "object",
+                                                "description": "Previous field values that were changed"
+                                            }
+                                        }
+                                    }
+                                ]
+                            }
+                        }
+                    }
+                },
+                "responses": {
+                    "200": {"description": "Webhook received successfully"}
+                },
+                "summary": "User Updated Webhook",
+                "description": "Triggered when a user account is updated"
+            }
+        }
+    }
+    
+    # External documentation
+    openapi_schema["externalDocs"] = {
+        "description": "Complete API Documentation",
+        "url": "https://docs.example.com/api/"
+    }
+    
+    # Custom extensions for tooling
+    openapi_schema["x-codegen"] = {
+        "generate-models": True,
+        "generate-client": True,
+        "client-package": "example-api-client",
+        "model-package": "example-api-models"
+    }
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+# Apply the enhanced schema
+app.openapi = create_enhanced_openapi_schema
+```
+
+### 12.4 Custom Documentation UI and Themes
+
+Advanced documentation UI customization:
+
+```python
+from fastapi import FastAPI, Request
+from fastapi.responses import HTMLResponse
+from fastapi.templating import Jinja2Templates
+from fastapi.staticfiles import StaticFiles
+import json
+
+# Custom documentation with branding
+@app.get("/api/docs", include_in_schema=False)
+async def custom_docs():
+    """Custom Swagger UI with corporate branding"""
+    return HTMLResponse(f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Advanced FastAPI Documentation</title>
+        <link rel="stylesheet" type="text/css" href="/static/swagger-ui.css" />
+        <link rel="icon" type="image/png" href="/static/favicon.png" sizes="32x32" />
+        <style>
+            .swagger-ui .topbar {{
+                background-color: #1f2937;
+                border-bottom: 3px solid #3b82f6;
+            }}
+            .swagger-ui .topbar-wrapper img {{
+                content: url('/static/company-logo.png');
+                height: 40px;
+            }}
+            .swagger-ui .info .title {{
+                color: #1f2937;
+                font-family: 'Arial', sans-serif;
+            }}
+            .swagger-ui .scheme-container {{
+                background: #f8fafc;
+                border: 1px solid #e2e8f0;
+                border-radius: 8px;
+                padding: 1rem;
+            }}
+            .swagger-ui .btn.authorize {{
+                background-color: #3b82f6;
+                border-color: #3b82f6;
+            }}
+            .swagger-ui .btn.authorize:hover {{
+                background-color: #2563eb;
+                border-color: #2563eb;
+            }}
+        </style>
+    </head>
+    <body>
+        <div id="swagger-ui"></div>
+        <script src="/static/swagger-ui-bundle.js"></script>
+        <script>
+            SwaggerUIBundle({{
+                url: '{app.openapi_url}',
+                dom_id: '#swagger-ui',
+                presets: [
+                    SwaggerUIBundle.presets.apis,
+                    SwaggerUIBundle.presets.standalone
+                ],
+                layout: "BaseLayout",
+                deepLinking: true,
+                showExtensions: true,
+                showCommonExtensions: true,
+                defaultModelsExpandDepth: 2,
+                defaultModelExpandDepth: 2,
+                displayRequestDuration: true,
+                docExpansion: 'list',
+                filter: true,
+                operationsSorter: 'alpha',
+                tagsSorter: 'alpha',
+                tryItOutEnabled: true,
+                requestInterceptor: function(request) {{
+                    // Add custom headers for all requests
+                    request.headers['X-Client-Type'] = 'swagger-ui';
+                    request.headers['X-Documentation-Version'] = '3.0';
+                    return request;
+                }},
+                responseInterceptor: function(response) {{
+                    // Log all responses for debugging
+                    console.log('API Response:', response);
+                    return response;
+                }},
+                onComplete: function() {{
+                    // Custom JavaScript after documentation loads
+                    console.log('FastAPI documentation loaded successfully');
+                }}
+            }});
+        </script>
+    </body>
+    </html>
+    """)
+
+@app.get("/api/redoc", include_in_schema=False)
+async def custom_redoc():
+    """Custom ReDoc with enhanced styling"""
+    return HTMLResponse(f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <title>Advanced FastAPI API Reference</title>
+        <meta charset="utf-8"/>
+        <meta name="viewport" content="width=device-width, initial-scale=1">
+        <link rel="icon" type="image/png" href="/static/favicon.png" sizes="32x32" />
+        <style>
+            body {{
+                margin: 0;
+                padding: 0;
+                font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            }}
+            redoc {{
+                --redoc-color-primary: #3b82f6;
+                --redoc-color-primary-dark: #2563eb;
+                --redoc-color-success: #10b981;
+                --redoc-color-warning: #f59e0b;
+                --redoc-color-error: #ef4444;
+                --redoc-font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+                --redoc-code-font-family: 'Fira Code', 'Monaco', 'Consolas', monospace;
+            }}
+        </style>
+    </head>
+    <body>
+        <redoc spec-url='{app.openapi_url}'
+               lazy-rendering
+               native-scrollbars
+               theme='{{
+                   "colors": {{
+                       "primary": {{
+                           "main": "#3b82f6"
+                       }}
+                   }},
+                   "typography": {{
+                       "fontSize": "14px",
+                       "lineHeight": "1.5em",
+                       "code": {{
+                           "fontSize": "13px",
+                           "fontFamily": "Fira Code, Monaco, Consolas, monospace"
+                       }}
+                   }},
+                   "sidebar": {{
+                       "backgroundColor": "#f8fafc",
+                       "width": "260px"
+                   }}
+               }}'
+               expand-responses="200,201"
+               path-in-middle-panel
+               required-props-first
+               sort-props-alphabetically
+               show-extensions></redoc>
+        <script src="/static/redoc.standalone.js"></script>
+    </body>
+    </html>
+    """)
+```
+
+### 12.5 OpenAPI Code Generation and Client Libraries
+
+Generate client SDKs from OpenAPI specification:
+
+```python
+from fastapi import FastAPI
+from fastapi.responses import PlainTextResponse, JSONResponse
+import subprocess
+import os
+import tempfile
+import json
+
+@app.get("/api/sdk/openapi.json", include_in_schema=False)
+async def download_openapi_spec():
+    """Download the complete OpenAPI specification"""
+    return JSONResponse(content=app.openapi())
+
+@app.get("/api/sdk/openapi.yaml", include_in_schema=False)
+async def download_openapi_yaml():
+    """Download OpenAPI specification in YAML format"""
+    import yaml
+    openapi_dict = app.openapi()
+    yaml_content = yaml.dump(openapi_dict, default_flow_style=False, sort_keys=False)
+    return PlainTextResponse(content=yaml_content, media_type="application/x-yaml")
+
+@app.get("/api/sdk/{language}/client.zip", include_in_schema=False)
+async def generate_client_sdk(language: str):
+    """Generate and download client SDK for specified language"""
+    supported_languages = {
+        'python': 'python',
+        'javascript': 'javascript',
+        'typescript': 'typescript-axios',
+        'java': 'java',
+        'csharp': 'csharp',
+        'go': 'go',
+        'php': 'php',
+        'ruby': 'ruby',
+        'swift': 'swift5'
+    }
+    
+    if language not in supported_languages:
+        return JSONResponse(
+            status_code=400,
+            content={
+                "error": f"Unsupported language: {language}",
+                "supported": list(supported_languages.keys())
+            }
+        )
+    
+    # This would typically use openapi-generator-cli
+    # For demonstration, return information about SDK generation
+    return JSONResponse(content={
+        "message": f"SDK generation for {language}",
+        "generator": supported_languages[language],
+        "openapi_spec_url": "/api/sdk/openapi.json",
+        "generation_command": f"openapi-generator-cli generate -i http://localhost:8000/api/sdk/openapi.json -g {supported_languages[language]} -o ./client-{language}",
+        "documentation": "https://openapi-generator.tech/docs/generators"
+    })
+
+# Advanced schema validation endpoint
+@app.post("/api/schema/validate", include_in_schema=False)
+async def validate_openapi_schema():
+    """Validate the current OpenAPI schema against OpenAPI 3.0 specification"""
+    try:
+        openapi_spec = app.openapi()
+        
+        # Basic validation checks
+        validation_results = {
+            "valid": True,
+            "version": openapi_spec.get("openapi", "unknown"),
+            "title": openapi_spec.get("info", {}).get("title", "unknown"),
+            "paths_count": len(openapi_spec.get("paths", {})),
+            "components_count": len(openapi_spec.get("components", {}).get("schemas", {})),
+            "security_schemes": list(openapi_spec.get("components", {}).get("securitySchemes", {}).keys()),
+            "tags": [tag.get("name") for tag in openapi_spec.get("tags", [])],
+            "servers": [server.get("url") for server in openapi_spec.get("servers", [])],
+            "warnings": [],
+            "errors": []
+        }
+        
+        # Check for common issues
+        if not openapi_spec.get("info", {}).get("description"):
+            validation_results["warnings"].append("Missing API description")
+        
+        if not openapi_spec.get("info", {}).get("contact"):
+            validation_results["warnings"].append("Missing contact information")
+        
+        if not openapi_spec.get("info", {}).get("license"):
+            validation_results["warnings"].append("Missing license information")
+        
+        # Check paths
+        for path, methods in openapi_spec.get("paths", {}).items():
+            for method, operation in methods.items():
+                if method in ["get", "post", "put", "delete", "patch", "options", "head"]:
+                    if not operation.get("summary"):
+                        validation_results["warnings"].append(f"Missing summary for {method.upper()} {path}")
+                    
+                    if not operation.get("description"):
+                        validation_results["warnings"].append(f"Missing description for {method.upper()} {path}")
+        
+        return JSONResponse(content=validation_results)
+    
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={"valid": False, "error": str(e)}
+        )
+
+# Schema comparison endpoint
+@app.post("/api/schema/compare", include_in_schema=False)
+async def compare_schemas(previous_schema: dict):
+    """Compare current schema with a previous version"""
+    current_schema = app.openapi()
+    
+    changes = {
+        "version_change": {
+            "from": previous_schema.get("info", {}).get("version"),
+            "to": current_schema.get("info", {}).get("version")
+        },
+        "new_paths": [],
+        "removed_paths": [],
+        "modified_paths": [],
+        "new_schemas": [],
+        "removed_schemas": [],
+        "breaking_changes": []
+    }
+    
+    # Compare paths
+    prev_paths = set(previous_schema.get("paths", {}).keys())
+    curr_paths = set(current_schema.get("paths", {}).keys())
+    
+    changes["new_paths"] = list(curr_paths - prev_paths)
+    changes["removed_paths"] = list(prev_paths - curr_paths)
+    
+    # Compare schemas
+    prev_schemas = set(previous_schema.get("components", {}).get("schemas", {}).keys())
+    curr_schemas = set(current_schema.get("components", {}).get("schemas", {}).keys())
+    
+    changes["new_schemas"] = list(curr_schemas - prev_schemas)
+    changes["removed_schemas"] = list(prev_schemas - curr_schemas)
+    
+    # Detect breaking changes
+    if changes["removed_paths"]:
+        changes["breaking_changes"].extend([f"Removed endpoint: {path}" for path in changes["removed_paths"]])
+    
+    if changes["removed_schemas"]:
+        changes["breaking_changes"].extend([f"Removed schema: {schema}" for schema in changes["removed_schemas"]])
+    
+    return JSONResponse(content=changes)
+```
+
+### 12.6 API Versioning with OpenAPI
+
+Advanced API versioning strategies:
+
+```python
+from fastapi import FastAPI, Header, Depends, HTTPException
+from typing import Optional, Literal
+import semantic_version
+
+# Version-aware application setup
+app = FastAPI(
+    title="Versioned API",
+    version="3.2.1",
+    openapi_tags=[
+        {"name": "v1", "description": "Legacy API version 1"},
+        {"name": "v2", "description": "Current stable API version 2"},  
+        {"name": "v3", "description": "Latest API version 3 (beta)"}
+    ]
+)
+
+# Version detection dependency
+async def get_api_version(
+    accept_version: Optional[str] = Header(None, alias="Accept-Version"),
+    x_api_version: Optional[str] = Header(None, alias="X-API-Version")
+) -> str:
+    """Detect API version from headers"""
+    version = accept_version or x_api_version or "3.0"
+    
+    try:
+        # Validate semantic version
+        semantic_version.Version(version)
+        return version
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid API version format: {version}. Use semantic versioning (e.g., '2.1.0')"
+        )
+
+# Version-specific endpoints
+@app.get(
+    "/users/{user_id}",
+    tags=["v3"],
+    summary="Get User (v3.x)",
+    description="""
+    Get user information with enhanced fields and validation.
+    
+    **Version 3.x Changes:**
+    - Added user preferences and profile data
+    - Enhanced validation and error handling
+    - Improved response format with metadata
+    - Deprecated `full_name` field (use `profile.display_name`)
+    """,
+    deprecated=False,
+    responses={
+        200: {"description": "User found", "model": UserResponse},
+        404: {"description": "User not found"},
+        410: {"description": "API version no longer supported"}
+    }
+)
+async def get_user_v3(
+    user_id: int,
+    version: str = Depends(get_api_version)
+):
+    """Get user with version-specific logic"""
+    major_version = semantic_version.Version(version).major
+    
+    if major_version < 2:
+        raise HTTPException(
+            status_code=410,
+            detail="API version 1.x is no longer supported. Please upgrade to version 2.x or 3.x"
+        )
+    
+    # Version-specific response logic
+    if major_version == 2:
+        # Return v2 compatible response
+        return {"id": user_id, "username": "user", "email": "user@example.com"}
+    else:
+        # Return v3 response with enhanced data
+        return UserResponse(
+            success=True,
+            message="User retrieved successfully",
+            timestamp=datetime.utcnow(),
+            data=AdvancedUser(
+                id=user_id,
+                username="user",
+                email="user@example.com",
+                created_at=datetime.utcnow()
+            )
+        )
+
+# Version-specific OpenAPI schema customization
+def create_versioned_openapi():
+    """Create version-aware OpenAPI schema"""
+    if app.openapi_schema:
+        return app.openapi_schema
+    
+    openapi_schema = get_openapi(
+        title="Versioned FastAPI Application",
+        version="3.2.1",
+        description="""
+        # Multi-Version API
+        
+        This API supports multiple versions with backward compatibility.
+        
+        ## Version Support
+        
+        | Version | Status | Support Until | Notes |
+        |---------|--------|---------------|-------|
+        | 1.x | ❌ EOL | 2023-12-31 | No longer supported |
+        | 2.x | ✅ Active | 2025-06-30 | Stable, maintenance mode |
+        | 3.x | 🚀 Current | Ongoing | Latest features |
+        
+        ## Version Selection
+        
+        Specify API version using headers:
+        - `Accept-Version: 2.1.0`
+        - `X-API-Version: 3.0.0`
+        
+        Default version: 3.0 (latest stable)
+        """,
+        routes=app.routes
+    )
+    
+    # Add version information to info section
+    openapi_schema["info"]["x-api-versions"] = {
+        "supported": ["2.1.0", "2.2.0", "3.0.0", "3.1.0", "3.2.1"],
+        "deprecated": ["1.0.0", "1.1.0"],
+        "current": "3.2.1",
+        "stable": "3.0.0",
+        "beta": "3.2.1"
+    }
+    
+    # Add versioning documentation
+    openapi_schema["info"]["x-version-policy"] = {
+        "breaking_changes": "Major version increment",
+        "new_features": "Minor version increment", 
+        "bug_fixes": "Patch version increment",
+        "support_period": "24 months for major versions"
+    }
+    
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+app.openapi = create_versioned_openapi
+```
+
+This comprehensive enhancement adds advanced OpenAPI features to FastAPI including:
+
+1. **Enhanced Schema Generation**: Complex validation, cross-field validation, and rich metadata
+2. **Advanced Schema Customization**: Multiple server environments, comprehensive security schemes, webhook definitions
+3. **Custom Documentation UI**: Branded Swagger UI and ReDoc with custom styling  
+4. **Code Generation Support**: SDK generation endpoints and schema validation
+5. **API Versioning**: Semantic versioning with backward compatibility
+
+FastAPI's built-in OpenAPI support is now enhanced with enterprise-level features for production APIs.
 
 Advanced endpoint documentation:
 

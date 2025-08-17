@@ -3437,4 +3437,755 @@ if __name__ == '__main__':
     app.run()
 ```
 
-This comprehensive Flask guide covers all essential aspects of Flask web development, from basic concepts to advanced production deployment, providing developers with the knowledge needed to build robust, scalable web applications.
+## Chapter 14: OpenAPI Specification Support
+
+Adding comprehensive OpenAPI (Swagger) specification support to Flask applications for automatic API documentation.
+
+### 14.1 Flask-RESTX for OpenAPI Support
+
+Flask-RESTX provides built-in OpenAPI support with automatic documentation generation.
+
+#### Installation and Basic Setup
+
+```bash
+pip install flask-restx
+```
+
+Basic Flask-RESTX application:
+
+```python
+# app/api/__init__.py
+from flask import Flask
+from flask_restx import Api
+
+def create_api(app: Flask):
+    """Create and configure Flask-RESTX API"""
+    api = Api(
+        app,
+        version='1.0',
+        title='Flask API with OpenAPI',
+        description='A comprehensive Flask API with OpenAPI specification',
+        doc='/docs/',  # Swagger UI endpoint
+        contact='support@example.com',
+        contact_email='support@example.com',
+        license='MIT',
+        license_url='https://opensource.org/licenses/MIT',
+        validate=True,  # Enable request/response validation
+        catch_all_404s=True
+    )
+    
+    return api
+
+# app/__init__.py
+from flask import Flask
+from app.api import create_api
+
+def create_app(config_name='default'):
+    app = Flask(__name__)
+    app.config.from_object(config[config_name])
+    
+    # Initialize extensions
+    db.init_app(app)
+    
+    # Create API
+    api = create_api(app)
+    
+    # Register namespaces
+    from app.api.users import api as users_ns
+    from app.api.posts import api as posts_ns
+    from app.api.auth import api as auth_ns
+    
+    api.add_namespace(users_ns, path='/api/v1/users')
+    api.add_namespace(posts_ns, path='/api/v1/posts')
+    api.add_namespace(auth_ns, path='/api/v1/auth')
+    
+    return app
+```
+
+### 14.2 API Models and Serialization
+
+Defining API models for request/response serialization:
+
+```python
+# app/api/models.py
+from flask_restx import fields
+from app.api import api
+
+# User models
+user_model = api.model('User', {
+    'id': fields.Integer(readonly=True, description='User ID'),
+    'username': fields.String(required=True, description='Username', min_length=3, max_length=50),
+    'email': fields.String(required=True, description='Email address'),
+    'full_name': fields.String(description='Full name', max_length=100),
+    'is_active': fields.Boolean(description='Active status', default=True),
+    'created_at': fields.DateTime(readonly=True, description='Creation timestamp'),
+    'updated_at': fields.DateTime(readonly=True, description='Last update timestamp')
+})
+
+user_input_model = api.model('UserInput', {
+    'username': fields.String(required=True, description='Username', min_length=3, max_length=50),
+    'email': fields.String(required=True, description='Email address'),
+    'password': fields.String(required=True, description='Password', min_length=8),
+    'full_name': fields.String(description='Full name', max_length=100)
+})
+
+user_update_model = api.model('UserUpdate', {
+    'username': fields.String(description='Username', min_length=3, max_length=50),
+    'email': fields.String(description='Email address'),
+    'full_name': fields.String(description='Full name', max_length=100),
+    'is_active': fields.Boolean(description='Active status')
+})
+
+# Post models
+post_model = api.model('Post', {
+    'id': fields.Integer(readonly=True, description='Post ID'),
+    'title': fields.String(required=True, description='Post title', max_length=200),
+    'content': fields.String(required=True, description='Post content'),
+    'published': fields.Boolean(description='Published status', default=False),
+    'author_id': fields.Integer(required=True, description='Author ID'),
+    'author': fields.Nested(user_model, description='Post author'),
+    'created_at': fields.DateTime(readonly=True, description='Creation timestamp'),
+    'updated_at': fields.DateTime(readonly=True, description='Last update timestamp')
+})
+
+post_input_model = api.model('PostInput', {
+    'title': fields.String(required=True, description='Post title', max_length=200),
+    'content': fields.String(required=True, description='Post content'),
+    'published': fields.Boolean(description='Published status', default=False)
+})
+
+# Authentication models
+login_model = api.model('Login', {
+    'email': fields.String(required=True, description='Email address'),
+    'password': fields.String(required=True, description='Password')
+})
+
+token_model = api.model('Token', {
+    'access_token': fields.String(description='JWT access token'),
+    'token_type': fields.String(description='Token type', default='Bearer'),
+    'expires_in': fields.Integer(description='Token expiration time in seconds')
+})
+
+# Error models
+error_model = api.model('Error', {
+    'message': fields.String(description='Error message'),
+    'code': fields.String(description='Error code'),
+    'details': fields.Raw(description='Additional error details')
+})
+
+# Pagination models
+pagination_model = api.model('Pagination', {
+    'page': fields.Integer(description='Current page number'),
+    'per_page': fields.Integer(description='Items per page'),
+    'total': fields.Integer(description='Total number of items'),
+    'pages': fields.Integer(description='Total number of pages'),
+    'has_next': fields.Boolean(description='Has next page'),
+    'has_prev': fields.Boolean(description='Has previous page')
+})
+
+paginated_users_model = api.model('PaginatedUsers', {
+    'users': fields.List(fields.Nested(user_model), description='List of users'),
+    'pagination': fields.Nested(pagination_model, description='Pagination information')
+})
+
+paginated_posts_model = api.model('PaginatedPosts', {
+    'posts': fields.List(fields.Nested(post_model), description='List of posts'),
+    'pagination': fields.Nested(pagination_model, description='Pagination information')
+})
+```
+
+### 14.3 API Resources with OpenAPI Documentation
+
+Implementing API resources with comprehensive OpenAPI documentation:
+
+```python
+# app/api/users.py
+from flask import request, current_app
+from flask_restx import Namespace, Resource, fields
+from flask_jwt_extended import jwt_required, get_current_user
+from app.models import User
+from app import db
+from app.api.models import (
+    user_model, user_input_model, user_update_model,
+    paginated_users_model, error_model
+)
+
+api = Namespace('users', description='User management operations')
+
+# Request parsers
+user_parser = api.parser()
+user_parser.add_argument('page', type=int, default=1, help='Page number')
+user_parser.add_argument('per_page', type=int, default=10, help='Items per page')
+user_parser.add_argument('search', type=str, help='Search term')
+user_parser.add_argument('is_active', type=bool, help='Filter by active status')
+
+@api.route('/')
+class UserList(Resource):
+    @api.doc('get_users')
+    @api.marshal_list_with(paginated_users_model)
+    @api.expect(user_parser)
+    @api.response(200, 'Success', paginated_users_model)
+    @api.response(400, 'Validation error', error_model)
+    def get(self):
+        """
+        Get list of users with pagination and filtering
+        
+        Returns a paginated list of users with optional filtering by search term and active status.
+        """
+        args = user_parser.parse_args()
+        
+        query = User.query
+        
+        # Apply search filter
+        if args.search:
+            query = query.filter(
+                User.username.contains(args.search) |
+                User.email.contains(args.search) |
+                User.full_name.contains(args.search)
+            )
+        
+        # Apply active status filter
+        if args.is_active is not None:
+            query = query.filter(User.is_active == args.is_active)
+        
+        # Paginate results
+        pagination = query.paginate(
+            page=args.page,
+            per_page=min(args.per_page, 100),  # Limit max per_page
+            error_out=False
+        )
+        
+        return {
+            'users': pagination.items,
+            'pagination': {
+                'page': pagination.page,
+                'per_page': pagination.per_page,
+                'total': pagination.total,
+                'pages': pagination.pages,
+                'has_next': pagination.has_next,
+                'has_prev': pagination.has_prev
+            }
+        }
+    
+    @api.doc('create_user')
+    @api.expect(user_input_model, validate=True)
+    @api.marshal_with(user_model, code=201)
+    @api.response(201, 'User created successfully', user_model)
+    @api.response(400, 'Validation error', error_model)
+    @api.response(409, 'User already exists', error_model)
+    def post(self):
+        """
+        Create a new user
+        
+        Creates a new user with the provided information. Username and email must be unique.
+        """
+        data = request.json
+        
+        # Check if user already exists
+        if User.query.filter_by(username=data['username']).first():
+            api.abort(409, 'Username already exists')
+        
+        if User.query.filter_by(email=data['email']).first():
+            api.abort(409, 'Email already exists')
+        
+        # Create new user
+        user = User(
+            username=data['username'],
+            email=data['email'],
+            full_name=data.get('full_name')
+        )
+        user.set_password(data['password'])
+        
+        db.session.add(user)
+        db.session.commit()
+        
+        return user, 201
+
+@api.route('/<int:user_id>')
+@api.param('user_id', 'User ID')
+class UserResource(Resource):
+    @api.doc('get_user')
+    @api.marshal_with(user_model)
+    @api.response(200, 'Success', user_model)
+    @api.response(404, 'User not found', error_model)
+    def get(self, user_id):
+        """
+        Get user by ID
+        
+        Retrieves detailed information about a specific user.
+        """
+        user = User.query.get_or_404(user_id)
+        return user
+    
+    @api.doc('update_user')
+    @api.expect(user_update_model, validate=True)
+    @api.marshal_with(user_model)
+    @api.response(200, 'User updated successfully', user_model)
+    @api.response(404, 'User not found', error_model)
+    @api.response(409, 'Username/email already exists', error_model)
+    @jwt_required()
+    def put(self, user_id):
+        """
+        Update user information
+        
+        Updates user information. Requires authentication. Users can only update their own profile unless they are admin.
+        """
+        user = User.query.get_or_404(user_id)
+        current_user = get_current_user()
+        
+        # Check permissions
+        if user.id != current_user.id and not current_user.is_admin:
+            api.abort(403, 'Insufficient permissions')
+        
+        data = request.json
+        
+        # Check for conflicts
+        if 'username' in data and data['username'] != user.username:
+            if User.query.filter_by(username=data['username']).first():
+                api.abort(409, 'Username already exists')
+            user.username = data['username']
+        
+        if 'email' in data and data['email'] != user.email:
+            if User.query.filter_by(email=data['email']).first():
+                api.abort(409, 'Email already exists')
+            user.email = data['email']
+        
+        if 'full_name' in data:
+            user.full_name = data['full_name']
+        
+        if 'is_active' in data and current_user.is_admin:
+            user.is_active = data['is_active']
+        
+        db.session.commit()
+        return user
+    
+    @api.doc('delete_user')
+    @api.response(204, 'User deleted successfully')
+    @api.response(404, 'User not found', error_model)
+    @api.response(403, 'Insufficient permissions', error_model)
+    @jwt_required()
+    def delete(self, user_id):
+        """
+        Delete user
+        
+        Deletes a user account. Requires admin permissions.
+        """
+        user = User.query.get_or_404(user_id)
+        current_user = get_current_user()
+        
+        if not current_user.is_admin:
+            api.abort(403, 'Admin permissions required')
+        
+        db.session.delete(user)
+        db.session.commit()
+        
+        return '', 204
+
+@api.route('/<int:user_id>/posts')
+@api.param('user_id', 'User ID')
+class UserPosts(Resource):
+    @api.doc('get_user_posts')
+    @api.marshal_with(paginated_posts_model)
+    @api.response(200, 'Success', paginated_posts_model)
+    @api.response(404, 'User not found', error_model)
+    def get(self, user_id):
+        """
+        Get posts by user
+        
+        Retrieves all posts authored by a specific user.
+        """
+        user = User.query.get_or_404(user_id)
+        
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 10, type=int)
+        
+        pagination = user.posts.paginate(
+            page=page,
+            per_page=min(per_page, 100),
+            error_out=False
+        )
+        
+        return {
+            'posts': pagination.items,
+            'pagination': {
+                'page': pagination.page,
+                'per_page': pagination.per_page,
+                'total': pagination.total,
+                'pages': pagination.pages,
+                'has_next': pagination.has_next,
+                'has_prev': pagination.has_prev
+            }
+        }
+```
+
+### 14.4 Authentication API with OpenAPI
+
+Authentication endpoints with OpenAPI documentation:
+
+```python
+# app/api/auth.py
+from flask import request
+from flask_restx import Namespace, Resource
+from flask_jwt_extended import create_access_token, jwt_required, get_current_user
+from app.models import User
+from app.api.models import login_model, token_model, user_model, error_model
+
+api = Namespace('auth', description='Authentication operations')
+
+@api.route('/login')
+class Login(Resource):
+    @api.doc('login')
+    @api.expect(login_model, validate=True)
+    @api.marshal_with(token_model)
+    @api.response(200, 'Login successful', token_model)
+    @api.response(401, 'Invalid credentials', error_model)
+    @api.response(400, 'Validation error', error_model)
+    def post(self):
+        """
+        User login
+        
+        Authenticates a user and returns a JWT access token for API access.
+        """
+        data = request.json
+        
+        user = User.query.filter_by(email=data['email']).first()
+        
+        if not user or not user.check_password(data['password']):
+            api.abort(401, 'Invalid email or password')
+        
+        if not user.is_active:
+            api.abort(401, 'Account is deactivated')
+        
+        access_token = create_access_token(identity=user.id)
+        
+        return {
+            'access_token': access_token,
+            'token_type': 'Bearer',
+            'expires_in': 3600  # 1 hour
+        }
+
+@api.route('/profile')
+class Profile(Resource):
+    @api.doc('get_profile')
+    @api.marshal_with(user_model)
+    @api.response(200, 'Success', user_model)
+    @api.response(401, 'Authentication required', error_model)
+    @jwt_required()
+    def get(self):
+        """
+        Get current user profile
+        
+        Retrieves the profile information of the authenticated user.
+        """
+        return get_current_user()
+
+@api.route('/register')
+class Register(Resource):
+    @api.doc('register')
+    @api.expect(user_input_model, validate=True)
+    @api.marshal_with(user_model, code=201)
+    @api.response(201, 'User registered successfully', user_model)
+    @api.response(409, 'User already exists', error_model)
+    @api.response(400, 'Validation error', error_model)
+    def post(self):
+        """
+        User registration
+        
+        Registers a new user account with the provided information.
+        """
+        data = request.json
+        
+        # Check if user already exists
+        if User.query.filter_by(username=data['username']).first():
+            api.abort(409, 'Username already exists')
+        
+        if User.query.filter_by(email=data['email']).first():
+            api.abort(409, 'Email already exists')
+        
+        # Create new user
+        user = User(
+            username=data['username'],
+            email=data['email'],
+            full_name=data.get('full_name')
+        )
+        user.set_password(data['password'])
+        
+        db.session.add(user)
+        db.session.commit()
+        
+        return user, 201
+```
+
+### 14.5 Custom OpenAPI Configuration
+
+Advanced OpenAPI configuration and customization:
+
+```python
+# app/api/config.py
+from flask import current_app
+from flask_restx import Api
+
+class CustomApi(Api):
+    """Custom API class with enhanced OpenAPI configuration"""
+    
+    def __init__(self, *args, **kwargs):
+        # Enhanced default configuration
+        kwargs.setdefault('doc', '/docs/')
+        kwargs.setdefault('validate', True)
+        kwargs.setdefault('catch_all_404s', True)
+        
+        super().__init__(*args, **kwargs)
+        
+        # Custom error handlers
+        self._configure_error_handlers()
+        
+        # Security definitions
+        self._configure_security()
+    
+    def _configure_error_handlers(self):
+        """Configure custom error handlers"""
+        
+        @self.errorhandler
+        def default_error_handler(error):
+            """Default error handler"""
+            return {
+                'message': str(error),
+                'code': getattr(error, 'code', 500)
+            }, getattr(error, 'code', 500)
+        
+        @self.errorhandler(404)
+        def not_found_handler(error):
+            """404 error handler"""
+            return {
+                'message': 'Resource not found',
+                'code': 404
+            }, 404
+        
+        @self.errorhandler(400)
+        def bad_request_handler(error):
+            """400 error handler"""
+            return {
+                'message': 'Bad request',
+                'code': 400,
+                'details': str(error)
+            }, 400
+    
+    def _configure_security(self):
+        """Configure security definitions"""
+        self.authorizations = {
+            'Bearer': {
+                'type': 'apiKey',
+                'in': 'header',
+                'name': 'Authorization',
+                'description': 'JWT Bearer token. Format: Bearer <token>'
+            },
+            'BasicAuth': {
+                'type': 'basic',
+                'description': 'Basic authentication with username and password'
+            }
+        }
+
+def create_enhanced_api(app):
+    """Create enhanced API with full OpenAPI configuration"""
+    api = CustomApi(
+        app,
+        version='1.0.0',
+        title='Flask API with Enhanced OpenAPI',
+        description='''
+        ## Flask REST API with OpenAPI Specification
+        
+        This API provides comprehensive user and content management functionality with:
+        
+        - **Authentication**: JWT-based authentication with login/register endpoints
+        - **User Management**: Full CRUD operations for user accounts
+        - **Content Management**: Post creation, editing, and publishing
+        - **Search & Filtering**: Advanced search and filtering capabilities
+        - **Pagination**: Efficient pagination for large datasets
+        
+        ### Authentication
+        
+        Most endpoints require authentication. Use the `/auth/login` endpoint to obtain a JWT token,
+        then include it in the Authorization header: `Authorization: Bearer <token>`
+        
+        ### Rate Limiting
+        
+        API endpoints are rate-limited to prevent abuse:
+        - General endpoints: 100 requests per minute
+        - Authentication endpoints: 5 requests per minute
+        
+        ### Error Handling
+        
+        All errors follow a consistent format with appropriate HTTP status codes and descriptive messages.
+        ''',
+        contact='API Support Team',
+        contact_email='support@example.com',
+        contact_url='https://example.com/support',
+        license='MIT License',
+        license_url='https://opensource.org/licenses/MIT',
+        terms_url='https://example.com/terms',
+        doc='/docs/',
+        validate=True,
+        security='Bearer'
+    )
+    
+    # Add global response models
+    api.models.update({
+        'Error': error_model,
+        'Pagination': pagination_model
+    })
+    
+    return api
+
+# Custom decorators for enhanced documentation
+def documented_route(api, path, **kwargs):
+    """Enhanced route decorator with automatic documentation"""
+    def decorator(cls):
+        # Add common response codes
+        kwargs.setdefault('responses', {})
+        kwargs['responses'].update({
+            400: 'Bad Request',
+            401: 'Authentication Required',
+            403: 'Insufficient Permissions',
+            404: 'Resource Not Found',
+            500: 'Internal Server Error'
+        })
+        
+        return api.route(path, **kwargs)(cls)
+    
+    return decorator
+
+# Usage example with enhanced documentation
+@documented_route(api, '/users/<int:user_id>')
+@api.param('user_id', 'The user identifier', type='integer', minimum=1)
+class EnhancedUserResource(Resource):
+    @api.doc(
+        'get_user_enhanced',
+        summary='Get user by ID',
+        description='Retrieves detailed user information including profile data and statistics',
+        tags=['users'],
+        security='Bearer'
+    )
+    @api.marshal_with(user_model)
+    @api.response(200, 'User found', user_model)
+    @jwt_required()
+    def get(self, user_id):
+        """Enhanced user retrieval with additional metadata"""
+        user = User.query.get_or_404(user_id)
+        
+        # Add computed fields
+        user_data = api.marshal(user, user_model)
+        user_data['post_count'] = user.posts.count()
+        user_data['last_login'] = user.last_login.isoformat() if user.last_login else None
+        
+        return user_data
+```
+
+### 14.6 OpenAPI Schema Generation and Export
+
+Tools for generating and exporting OpenAPI specifications:
+
+```python
+# app/utils/openapi.py
+import json
+import yaml
+from flask import current_app, url_for
+from app.api import api
+
+def generate_openapi_spec():
+    """Generate OpenAPI specification"""
+    with current_app.app_context():
+        spec = api.__schema__
+        
+        # Enhance specification with additional metadata
+        spec['servers'] = [
+            {
+                'url': 'https://api.example.com/v1',
+                'description': 'Production server'
+            },
+            {
+                'url': 'https://staging-api.example.com/v1',
+                'description': 'Staging server'
+            },
+            {
+                'url': 'http://localhost:5000',
+                'description': 'Development server'
+            }
+        ]
+        
+        # Add external documentation
+        spec['externalDocs'] = {
+            'description': 'API Documentation',
+            'url': 'https://docs.example.com/api'
+        }
+        
+        # Add tags
+        spec['tags'] = [
+            {
+                'name': 'auth',
+                'description': 'Authentication operations'
+            },
+            {
+                'name': 'users',
+                'description': 'User management operations'
+            },
+            {
+                'name': 'posts',
+                'description': 'Content management operations'
+            }
+        ]
+        
+        return spec
+
+def export_openapi_json(filename='openapi.json'):
+    """Export OpenAPI specification as JSON"""
+    spec = generate_openapi_spec()
+    
+    with open(filename, 'w') as f:
+        json.dump(spec, f, indent=2)
+    
+    return filename
+
+def export_openapi_yaml(filename='openapi.yaml'):
+    """Export OpenAPI specification as YAML"""
+    spec = generate_openapi_spec()
+    
+    with open(filename, 'w') as f:
+        yaml.dump(spec, f, default_flow_style=False, sort_keys=False)
+    
+    return filename
+
+# CLI command for exporting OpenAPI spec
+@current_app.cli.command()
+def export_openapi():
+    """Export OpenAPI specification"""
+    json_file = export_openapi_json()
+    yaml_file = export_openapi_yaml()
+    
+    print(f"OpenAPI specification exported:")
+    print(f"  JSON: {json_file}")
+    print(f"  YAML: {yaml_file}")
+
+# Custom Swagger UI configuration
+def configure_swagger_ui(api):
+    """Configure Swagger UI with custom settings"""
+    
+    @api.documentation
+    def custom_ui():
+        return {
+            'uiversion': 3,
+            'custom_css': url_for('static', filename='swagger-custom.css'),
+            'custom_js': url_for('static', filename='swagger-custom.js'),
+            'config': {
+                'displayRequestDuration': True,
+                'defaultModelsExpandDepth': 2,
+                'defaultModelExpandDepth': 2,
+                'docExpansion': 'none',
+                'filter': True,
+                'showExtensions': True,
+                'showCommonExtensions': True,
+                'tryItOutEnabled': True
+            }
+        }
+```
+
+This comprehensive addition to the Flask guide now includes full OpenAPI specification support with Flask-RESTX, providing automatic API documentation, request/response validation, and professional API management capabilities that rival FastAPI's built-in OpenAPI features.
