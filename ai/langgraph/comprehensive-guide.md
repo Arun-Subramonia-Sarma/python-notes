@@ -4,29 +4,29 @@ LangGraph is a revolutionary framework for building stateful, multi-agent AI app
 
 ## Table of Contents
 
-- [Installation and Setup](#installation-and-setup)
-- [Development Environment](#development-environment) 
-- [Quick Start](#quick-start)
-- [Core Concepts](#core-concepts)
-- [Basic Graphs](#basic-graphs)
-- [State Management](#state-management)
-- [Node Development](#node-development)
-- [Edge Configuration](#edge-configuration)
-- [Memory and Checkpointing](#memory-and-checkpointing)
-- [Multi-Agent Systems](#multi-agent-systems)
-- [Advanced Patterns](#advanced-patterns)
-- [Real-World Project Structure](#real-world-project-structure)
-- [Testing Strategies](#testing-strategies)
-- [Performance Optimization](#performance-optimization)
-- [Production Deployment](#production-deployment)
-- [Monitoring and Observability](#monitoring-and-observability)
-- [Troubleshooting](#troubleshooting)
-- [Migration Patterns](#migration-patterns)
-- [Enterprise Integration](#enterprise-integration)
+1. [Installation and Setup](#1-installation-and-setup)
+2. [Development Environment](#2-development-environment) 
+3. [Quick Start](#3-quick-start)
+4. [Core Concepts](#4-core-concepts)
+5. [Basic Graphs](#5-basic-graphs)
+6. [State Management](#6-state-management)
+7. [Node Development](#7-node-development)
+8. [Edge Configuration](#8-edge-configuration)
+9. [Memory and Checkpointing](#9-memory-and-checkpointing)
+10. [Multi-Agent Systems](#10-multi-agent-systems)
+11. [Advanced Patterns](#11-advanced-patterns)
+12. [Real-World Project Structure](#12-real-world-project-structure)
+13. [Testing Strategies](#13-testing-strategies)
+14. [Performance Optimization](#14-performance-optimization)
+15. [Production Deployment](#15-production-deployment)
+16. [Monitoring and Observability](#16-monitoring-and-observability)
+17. [Troubleshooting](#17-troubleshooting)
+18. [Migration Patterns](#18-migration-patterns)
+19. [Enterprise Integration](#19-enterprise-integration)
 
 ---
 
-## Installation and Setup
+## 1. Installation and Setup
 
 ### Prerequisites
 
@@ -271,7 +271,7 @@ python verify_installation.py
 
 ---
 
-## Development Environment
+## 2. Development Environment
 
 ### Project Structure Setup
 
@@ -606,7 +606,7 @@ settings = get_settings()
 
 ---
 
-## Quick Start
+## 3. Quick Start
 
 Now let's build your first LangGraph application step by step.
 
@@ -1008,7 +1008,7 @@ This example demonstrates:
 
 ---
 
-## Core Concepts
+## 4. Core Concepts
 
 Now that you've built your first graphs, let's dive deep into the fundamental concepts that make LangGraph powerful.
 
@@ -1320,7 +1320,7 @@ This foundational understanding prepares you for building more complex applicati
 
 ---
 
-## Basic Graphs
+## 5. Basic Graphs
 
 Let's systematically learn different graph patterns, starting from simple to complex.
 
@@ -2379,11 +2379,5634 @@ These branching examples show how to build sophisticated routing logic that can 
 
 ---
 
-## Testing Strategies
+## 6. State Management
 
-Testing is crucial for building reliable LangGraph applications. Let's explore comprehensive testing approaches from unit tests to end-to-end testing.
+State management is the backbone of LangGraph applications. Understanding how to design, manage, and evolve state effectively is crucial for building robust applications.
 
-### Test Structure Overview
+### 6.1 State Design Principles
+
+#### Understanding State Types
+
+```python
+from typing import TypedDict, Annotated, List, Dict, Any
+from langgraph.graph import StateGraph
+from langgraph.graph.message import add_messages
+
+# Basic State - Simple key-value pairs
+class BasicState(TypedDict):
+    counter: int
+    message: str
+    processed: bool
+
+# Message State - For conversation-based applications
+class ChatState(TypedDict):
+    messages: Annotated[List[Dict], add_messages]
+    user_id: str
+    context: Dict[str, Any]
+
+# Complex State - Multi-dimensional state
+class ProcessingState(TypedDict):
+    # Input data
+    input_data: Dict[str, Any]
+    
+    # Processing stages
+    validated: bool
+    processed_data: Dict[str, Any]
+    
+    # Metadata
+    processing_time: float
+    error_log: List[str]
+    
+    # Results
+    results: Dict[str, Any]
+    confidence_score: float
+```
+
+#### State Evolution Patterns
+
+```python
+from langgraph.graph import StateGraph, END
+from typing import TypedDict
+import time
+
+class DataProcessingState(TypedDict):
+    raw_data: Dict[str, Any]
+    validated_data: Dict[str, Any] 
+    enriched_data: Dict[str, Any]
+    final_result: Dict[str, Any]
+    stage: str
+    errors: List[str]
+
+def validate_data(state: DataProcessingState) -> DataProcessingState:
+    """Validate input data and update state"""
+    raw_data = state["raw_data"]
+    errors = []
+    validated_data = {}
+    
+    # Validation logic
+    if not raw_data:
+        errors.append("No input data provided")
+    else:
+        # Validate required fields
+        required_fields = ["id", "name", "type"]
+        for field in required_fields:
+            if field not in raw_data:
+                errors.append(f"Missing required field: {field}")
+            else:
+                validated_data[field] = raw_data[field]
+    
+    return {
+        **state,
+        "validated_data": validated_data,
+        "stage": "validated",
+        "errors": errors
+    }
+
+def enrich_data(state: DataProcessingState) -> DataProcessingState:
+    """Enrich validated data with additional information"""
+    validated_data = state["validated_data"]
+    
+    # Enrichment logic
+    enriched_data = {
+        **validated_data,
+        "processed_at": time.time(),
+        "version": "1.0",
+        "metadata": {
+            "processing_pipeline": "standard",
+            "enrichment_rules": ["timestamp", "version"]
+        }
+    }
+    
+    return {
+        **state,
+        "enriched_data": enriched_data,
+        "stage": "enriched"
+    }
+
+def finalize_processing(state: DataProcessingState) -> DataProcessingState:
+    """Finalize processing and generate results"""
+    enriched_data = state["enriched_data"]
+    
+    final_result = {
+        "processed_item": enriched_data,
+        "processing_summary": {
+            "total_stages": 3,
+            "final_stage": state["stage"],
+            "error_count": len(state["errors"])
+        }
+    }
+    
+    return {
+        **state,
+        "final_result": final_result,
+        "stage": "completed"
+    }
+
+# Build the state management graph
+def create_state_management_example():
+    graph = StateGraph(DataProcessingState)
+    
+    # Add nodes
+    graph.add_node("validate", validate_data)
+    graph.add_node("enrich", enrich_data)
+    graph.add_node("finalize", finalize_processing)
+    
+    # Define flow
+    graph.add_edge("validate", "enrich")
+    graph.add_edge("enrich", "finalize")
+    graph.add_edge("finalize", END)
+    
+    graph.set_entry_point("validate")
+    
+    return graph.compile()
+
+# Usage example
+app = create_state_management_example()
+
+# Test with sample data
+initial_state = {
+    "raw_data": {"id": "123", "name": "Test Item", "type": "sample"},
+    "validated_data": {},
+    "enriched_data": {},
+    "final_result": {},
+    "stage": "initial",
+    "errors": []
+}
+
+result = app.invoke(initial_state)
+print("Final state:", result)
+```
+
+### 6.2 Advanced State Patterns
+
+#### State Branching and Merging
+
+```python
+from typing import TypedDict, Union, Literal
+from langgraph.graph import StateGraph, END
+
+class BranchingState(TypedDict):
+    input_value: int
+    path_taken: str
+    processing_result: Dict[str, Any]
+    final_output: str
+
+def route_decision(state: BranchingState) -> Literal["high_value", "low_value", "invalid"]:
+    """Determine processing path based on input value"""
+    value = state["input_value"]
+    
+    if value < 0:
+        return "invalid"
+    elif value > 100:
+        return "high_value" 
+    else:
+        return "low_value"
+
+def process_high_value(state: BranchingState) -> BranchingState:
+    """Process high-value inputs with complex logic"""
+    return {
+        **state,
+        "path_taken": "high_value",
+        "processing_result": {
+            "type": "premium",
+            "discount": 0.15,
+            "priority": "high"
+        }
+    }
+
+def process_low_value(state: BranchingState) -> BranchingState:
+    """Process low-value inputs with standard logic"""
+    return {
+        **state,
+        "path_taken": "low_value", 
+        "processing_result": {
+            "type": "standard",
+            "discount": 0.05,
+            "priority": "normal"
+        }
+    }
+
+def handle_invalid(state: BranchingState) -> BranchingState:
+    """Handle invalid inputs"""
+    return {
+        **state,
+        "path_taken": "invalid",
+        "processing_result": {
+            "type": "error",
+            "message": "Invalid input value",
+            "requires_review": True
+        }
+    }
+
+def merge_results(state: BranchingState) -> BranchingState:
+    """Merge results from different paths"""
+    result = state["processing_result"]
+    path = state["path_taken"]
+    
+    final_output = f"Processed via {path} path: {result}"
+    
+    return {
+        **state,
+        "final_output": final_output
+    }
+
+# Create branching state graph
+def create_branching_example():
+    graph = StateGraph(BranchingState)
+    
+    # Add processing nodes
+    graph.add_node("high_value", process_high_value)
+    graph.add_node("low_value", process_low_value)
+    graph.add_node("invalid", handle_invalid)
+    graph.add_node("merge", merge_results)
+    
+    # Add conditional routing
+    graph.add_conditional_edges(
+        "route", 
+        route_decision,
+        {
+            "high_value": "high_value",
+            "low_value": "low_value", 
+            "invalid": "invalid"
+        }
+    )
+    
+    # All paths converge to merge
+    graph.add_edge("high_value", "merge")
+    graph.add_edge("low_value", "merge")
+    graph.add_edge("invalid", "merge")
+    graph.add_edge("merge", END)
+    
+    graph.set_entry_point("route")
+    
+    return graph.compile()
+```
+
+#### State Persistence and Recovery
+
+```python
+import pickle
+import json
+from pathlib import Path
+from typing import TypedDict, Optional
+
+class PersistentState(TypedDict):
+    session_id: str
+    data: Dict[str, Any]
+    checkpoint: int
+    last_updated: float
+
+class StateManager:
+    """Advanced state management with persistence"""
+    
+    def __init__(self, storage_path: str = "state_storage"):
+        self.storage_path = Path(storage_path)
+        self.storage_path.mkdir(exist_ok=True)
+    
+    def save_state(self, state: PersistentState) -> None:
+        """Save state to persistent storage"""
+        session_id = state["session_id"]
+        filepath = self.storage_path / f"session_{session_id}.json"
+        
+        # Convert state to JSON-serializable format
+        serializable_state = {
+            "session_id": state["session_id"],
+            "data": state["data"],
+            "checkpoint": state["checkpoint"],
+            "last_updated": state["last_updated"]
+        }
+        
+        with open(filepath, 'w') as f:
+            json.dump(serializable_state, f, indent=2)
+    
+    def load_state(self, session_id: str) -> Optional[PersistentState]:
+        """Load state from persistent storage"""
+        filepath = self.storage_path / f"session_{session_id}.json"
+        
+        if not filepath.exists():
+            return None
+        
+        with open(filepath, 'r') as f:
+            data = json.load(f)
+            return PersistentState(**data)
+    
+    def create_checkpoint(self, state: PersistentState) -> PersistentState:
+        """Create a checkpoint in the processing"""
+        checkpointed_state = {
+            **state,
+            "checkpoint": state["checkpoint"] + 1,
+            "last_updated": time.time()
+        }
+        
+        self.save_state(checkpointed_state)
+        return checkpointed_state
+
+# Usage with LangGraph
+def stateful_processing_node(state: PersistentState) -> PersistentState:
+    """Node that processes and checkpoints state"""
+    state_manager = StateManager()
+    
+    # Process data
+    processed_data = {
+        **state["data"],
+        "processed": True,
+        "processing_timestamp": time.time()
+    }
+    
+    # Update state
+    updated_state = {
+        **state,
+        "data": processed_data
+    }
+    
+    # Create checkpoint
+    return state_manager.create_checkpoint(updated_state)
+```
+
+---
+
+## 7. Node Development
+
+Nodes are the building blocks of LangGraph applications. This section covers everything from basic node creation to advanced node patterns and optimization.
+
+### 7.1 Basic Node Patterns
+
+#### Simple Function Nodes
+
+```python
+from typing import TypedDict, Dict, Any
+from langgraph.graph import StateGraph, END
+
+class ProcessingState(TypedDict):
+    input_text: str
+    processed_text: str
+    word_count: int
+    metadata: Dict[str, Any]
+
+def text_preprocessor(state: ProcessingState) -> ProcessingState:
+    """Clean and preprocess text input"""
+    raw_text = state["input_text"]
+    
+    # Basic text cleaning
+    cleaned_text = raw_text.strip().lower()
+    cleaned_text = ' '.join(cleaned_text.split())  # Normalize whitespace
+    
+    return {
+        **state,
+        "processed_text": cleaned_text,
+        "metadata": {
+            **state.get("metadata", {}),
+            "preprocessing_applied": True,
+            "original_length": len(raw_text),
+            "cleaned_length": len(cleaned_text)
+        }
+    }
+
+def word_counter(state: ProcessingState) -> ProcessingState:
+    """Count words in processed text"""
+    text = state["processed_text"]
+    word_count = len(text.split()) if text else 0
+    
+    return {
+        **state,
+        "word_count": word_count,
+        "metadata": {
+            **state["metadata"],
+            "word_counting_completed": True
+        }
+    }
+
+def text_analyzer(state: ProcessingState) -> ProcessingState:
+    """Analyze text characteristics"""
+    text = state["processed_text"]
+    
+    analysis = {
+        "character_count": len(text),
+        "sentence_count": len([s for s in text.split('.') if s.strip()]),
+        "average_word_length": sum(len(word) for word in text.split()) / len(text.split()) if text else 0
+    }
+    
+    return {
+        **state,
+        "metadata": {
+            **state["metadata"],
+            "analysis": analysis,
+            "analysis_completed": True
+        }
+    }
+```
+
+#### Class-Based Nodes
+
+```python
+from abc import ABC, abstractmethod
+import logging
+from datetime import datetime
+
+class BaseProcessor(ABC):
+    """Base class for all processors"""
+    
+    def __init__(self, name: str):
+        self.name = name
+        self.logger = logging.getLogger(f"processor.{name}")
+    
+    @abstractmethod
+    def process(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Process the state"""
+        pass
+    
+    def log_processing(self, state: Dict[str, Any], result: Dict[str, Any]) -> None:
+        """Log processing information"""
+        self.logger.info(f"Processed state in {self.name}: {len(str(state))} -> {len(str(result))} characters")
+
+class TextProcessor(BaseProcessor):
+    """Advanced text processing node"""
+    
+    def __init__(self, processing_rules: Dict[str, bool] = None):
+        super().__init__("text_processor")
+        self.rules = processing_rules or {
+            "lowercase": True,
+            "remove_punctuation": False,
+            "remove_numbers": False,
+            "normalize_whitespace": True
+        }
+    
+    def process(self, state: ProcessingState) -> ProcessingState:
+        """Process text according to configured rules"""
+        text = state["input_text"]
+        
+        if self.rules["lowercase"]:
+            text = text.lower()
+        
+        if self.rules["normalize_whitespace"]:
+            text = ' '.join(text.split())
+        
+        if self.rules["remove_punctuation"]:
+            import string
+            text = text.translate(str.maketrans('', '', string.punctuation))
+        
+        if self.rules["remove_numbers"]:
+            text = ''.join(char for char in text if not char.isdigit())
+        
+        result = {
+            **state,
+            "processed_text": text,
+            "metadata": {
+                **state.get("metadata", {}),
+                "processing_rules": self.rules,
+                "processed_at": datetime.now().isoformat(),
+                "processor": self.name
+            }
+        }
+        
+        self.log_processing(state, result)
+        return result
+
+class ValidationProcessor(BaseProcessor):
+    """Input validation node"""
+    
+    def __init__(self, validation_rules: Dict[str, Any]):
+        super().__init__("validator")
+        self.validation_rules = validation_rules
+    
+    def process(self, state: ProcessingState) -> ProcessingState:
+        """Validate input according to rules"""
+        text = state["input_text"]
+        errors = []
+        
+        # Length validation
+        if "min_length" in self.validation_rules:
+            if len(text) < self.validation_rules["min_length"]:
+                errors.append(f"Text too short (min: {self.validation_rules['min_length']})")
+        
+        if "max_length" in self.validation_rules:
+            if len(text) > self.validation_rules["max_length"]:
+                errors.append(f"Text too long (max: {self.validation_rules['max_length']})")
+        
+        # Content validation
+        if "required_words" in self.validation_rules:
+            required_words = self.validation_rules["required_words"]
+            missing_words = [word for word in required_words if word not in text.lower()]
+            if missing_words:
+                errors.append(f"Missing required words: {missing_words}")
+        
+        result = {
+            **state,
+            "metadata": {
+                **state.get("metadata", {}),
+                "validation_errors": errors,
+                "is_valid": len(errors) == 0,
+                "validated_at": datetime.now().isoformat()
+            }
+        }
+        
+        self.log_processing(state, result)
+        return result
+
+# Usage in graph
+def create_advanced_processing_graph():
+    # Initialize processors
+    validator = ValidationProcessor({
+        "min_length": 10,
+        "max_length": 1000,
+        "required_words": ["important"]
+    })
+    
+    processor = TextProcessor({
+        "lowercase": True,
+        "normalize_whitespace": True,
+        "remove_punctuation": False
+    })
+    
+    # Create graph
+    graph = StateGraph(ProcessingState)
+    
+    # Add nodes using class methods
+    graph.add_node("validate", validator.process)
+    graph.add_node("process", processor.process)
+    graph.add_node("count_words", word_counter)
+    graph.add_node("analyze", text_analyzer)
+    
+    # Define flow
+    graph.add_edge("validate", "process")
+    graph.add_edge("process", "count_words")
+    graph.add_edge("count_words", "analyze")
+    graph.add_edge("analyze", END)
+    
+    graph.set_entry_point("validate")
+    
+    return graph.compile()
+```
+
+### 7.2 Advanced Node Patterns
+
+#### Conditional Processing Nodes
+
+```python
+from typing import Literal, Union
+import random
+
+class ConditionalState(TypedDict):
+    input_data: Dict[str, Any]
+    processing_path: str
+    results: Dict[str, Any]
+    confidence_score: float
+
+def intelligent_router(state: ConditionalState) -> Literal["fast_path", "detailed_path", "expert_path"]:
+    """Route based on input complexity and requirements"""
+    data = state["input_data"]
+    
+    # Analyze input complexity
+    complexity_score = len(str(data))  # Simple complexity measure
+    
+    if complexity_score < 100:
+        return "fast_path"
+    elif complexity_score < 500:
+        return "detailed_path"
+    else:
+        return "expert_path"
+
+def fast_processor(state: ConditionalState) -> ConditionalState:
+    """Quick processing for simple inputs"""
+    results = {
+        "processing_type": "fast",
+        "processing_time": 0.1,
+        "accuracy": 0.85,
+        "details": "Quick processing applied"
+    }
+    
+    return {
+        **state,
+        "processing_path": "fast",
+        "results": results,
+        "confidence_score": 0.85
+    }
+
+def detailed_processor(state: ConditionalState) -> ConditionalState:
+    """Detailed processing for medium complexity"""
+    results = {
+        "processing_type": "detailed",
+        "processing_time": 0.5,
+        "accuracy": 0.92,
+        "details": "Comprehensive analysis performed",
+        "additional_metrics": {
+            "depth_analysis": True,
+            "cross_validation": True
+        }
+    }
+    
+    return {
+        **state,
+        "processing_path": "detailed",
+        "results": results,
+        "confidence_score": 0.92
+    }
+
+def expert_processor(state: ConditionalState) -> ConditionalState:
+    """Expert-level processing for complex inputs"""
+    results = {
+        "processing_type": "expert",
+        "processing_time": 1.2,
+        "accuracy": 0.97,
+        "details": "Expert analysis with multiple validation layers",
+        "expert_features": {
+            "deep_analysis": True,
+            "multi_model_validation": True,
+            "uncertainty_quantification": True,
+            "explanability_metrics": True
+        }
+    }
+    
+    return {
+        **state,
+        "processing_path": "expert",
+        "results": results,
+        "confidence_score": 0.97
+    }
+
+# Create conditional processing graph
+def create_conditional_processing_graph():
+    graph = StateGraph(ConditionalState)
+    
+    # Add processing nodes
+    graph.add_node("fast_path", fast_processor)
+    graph.add_node("detailed_path", detailed_processor) 
+    graph.add_node("expert_path", expert_processor)
+    
+    # Add conditional routing
+    graph.add_conditional_edges(
+        "route",
+        intelligent_router,
+        {
+            "fast_path": "fast_path",
+            "detailed_path": "detailed_path",
+            "expert_path": "expert_path"
+        }
+    )
+    
+    # All paths end
+    graph.add_edge("fast_path", END)
+    graph.add_edge("detailed_path", END)
+    graph.add_edge("expert_path", END)
+    
+    graph.set_entry_point("route")
+    
+    return graph.compile()
+```
+
+---
+
+## 8. Edge Configuration
+
+Edges define the flow of execution between nodes in your LangGraph application. This section covers everything from simple connections to complex conditional routing patterns.
+
+### 8.1 Basic Edge Types
+
+#### Simple Direct Edges
+
+```python
+from typing import TypedDict
+from langgraph.graph import StateGraph, START, END
+
+class SimpleState(TypedDict):
+    message: str
+    step_count: int
+
+def step_one(state: SimpleState) -> SimpleState:
+    return {
+        **state,
+        "message": f"Step 1: {state['message']}",
+        "step_count": state["step_count"] + 1
+    }
+
+def step_two(state: SimpleState) -> SimpleState:
+    return {
+        **state,
+        "message": f"Step 2: {state['message']}",
+        "step_count": state["step_count"] + 1
+    }
+
+# Create graph with direct edges
+graph = StateGraph(SimpleState)
+graph.add_node("step1", step_one)
+graph.add_node("step2", step_two)
+
+# Simple sequential flow
+graph.add_edge(START, "step1")
+graph.add_edge("step1", "step2")
+graph.add_edge("step2", END)
+
+app = graph.compile()
+```
+
+#### Fan-out Edges (One-to-Many)
+
+```python
+from typing import TypedDict, List
+
+class ParallelState(TypedDict):
+    input_data: str
+    process_a_result: str
+    process_b_result: str
+    process_c_result: str
+    results: List[str]
+
+def data_splitter(state: ParallelState) -> ParallelState:
+    """Split input for parallel processing"""
+    return {
+        **state,
+        "input_data": state["input_data"]
+    }
+
+def process_a(state: ParallelState) -> ParallelState:
+    """Process A - uppercase transformation"""
+    result = state["input_data"].upper()
+    return {
+        **state,
+        "process_a_result": f"A: {result}"
+    }
+
+def process_b(state: ParallelState) -> ParallelState:
+    """Process B - length analysis"""
+    length = len(state["input_data"])
+    return {
+        **state,
+        "process_b_result": f"B: Length={length}"
+    }
+
+def process_c(state: ParallelState) -> ParallelState:
+    """Process C - word count"""
+    words = len(state["input_data"].split())
+    return {
+        **state,
+        "process_c_result": f"C: Words={words}"
+    }
+
+def result_aggregator(state: ParallelState) -> ParallelState:
+    """Aggregate all results"""
+    results = [
+        state["process_a_result"],
+        state["process_b_result"], 
+        state["process_c_result"]
+    ]
+    return {
+        **state,
+        "results": results
+    }
+
+# Create fan-out graph
+graph = StateGraph(ParallelState)
+
+# Add all nodes
+graph.add_node("splitter", data_splitter)
+graph.add_node("process_a", process_a)
+graph.add_node("process_b", process_b) 
+graph.add_node("process_c", process_c)
+graph.add_node("aggregator", result_aggregator)
+
+# Fan-out pattern: one node to multiple nodes
+graph.add_edge(START, "splitter")
+graph.add_edge("splitter", "process_a")
+graph.add_edge("splitter", "process_b")
+graph.add_edge("splitter", "process_c")
+
+# Fan-in pattern: multiple nodes to one node
+graph.add_edge("process_a", "aggregator")
+graph.add_edge("process_b", "aggregator")
+graph.add_edge("process_c", "aggregator")
+graph.add_edge("aggregator", END)
+
+app = graph.compile()
+```
+
+### 8.2 Conditional Edges
+
+#### Basic Conditional Routing
+
+```python
+from typing import TypedDict, Literal
+
+class RoutingState(TypedDict):
+    user_input: str
+    intent: str
+    confidence: float
+    response: str
+
+def intent_classifier(state: RoutingState) -> RoutingState:
+    """Classify user intent"""
+    text = state["user_input"].lower()
+    
+    if "weather" in text or "temperature" in text:
+        intent = "weather"
+        confidence = 0.9
+    elif "news" in text or "current events" in text:
+        intent = "news"
+        confidence = 0.85
+    elif "help" in text or "support" in text:
+        intent = "support"
+        confidence = 0.8
+    else:
+        intent = "general"
+        confidence = 0.3
+    
+    return {
+        **state,
+        "intent": intent,
+        "confidence": confidence
+    }
+
+def weather_handler(state: RoutingState) -> RoutingState:
+    """Handle weather queries"""
+    return {
+        **state,
+        "response": f"Weather info for: {state['user_input']}"
+    }
+
+def news_handler(state: RoutingState) -> RoutingState:
+    """Handle news queries"""
+    return {
+        **state,
+        "response": f"Latest news about: {state['user_input']}"
+    }
+
+def support_handler(state: RoutingState) -> RoutingState:
+    """Handle support queries"""
+    return {
+        **state,
+        "response": f"Support assistance for: {state['user_input']}"
+    }
+
+def general_handler(state: RoutingState) -> RoutingState:
+    """Handle general queries"""
+    return {
+        **state,
+        "response": f"General response to: {state['user_input']}"
+    }
+
+def route_by_intent(state: RoutingState) -> Literal["weather", "news", "support", "general"]:
+    """Route based on classified intent"""
+    return state["intent"]
+
+# Create conditional routing graph
+graph = StateGraph(RoutingState)
+
+# Add nodes
+graph.add_node("classifier", intent_classifier)
+graph.add_node("weather", weather_handler)
+graph.add_node("news", news_handler)
+graph.add_node("support", support_handler)
+graph.add_node("general", general_handler)
+
+# Start with classification
+graph.add_edge(START, "classifier")
+
+# Conditional routing based on intent
+graph.add_conditional_edge(
+    "classifier",           # Source node
+    route_by_intent,        # Routing function
+    {
+        "weather": "weather",    # Intent -> node mapping
+        "news": "news",
+        "support": "support",
+        "general": "general"
+    }
+)
+
+# All handlers go to END
+graph.add_edge("weather", END)
+graph.add_edge("news", END)
+graph.add_edge("support", END)
+graph.add_edge("general", END)
+
+app = graph.compile()
+```
+
+#### Multi-Condition Routing
+
+```python
+from typing import TypedDict, Literal, Union
+
+class ComplexRoutingState(TypedDict):
+    user_input: str
+    user_tier: str  # "premium", "standard", "basic"
+    processing_complexity: str  # "simple", "moderate", "complex"
+    route_taken: str
+    result: str
+
+def analyze_complexity(state: ComplexRoutingState) -> ComplexRoutingState:
+    """Analyze processing complexity needed"""
+    text = state["user_input"]
+    
+    if len(text.split()) > 100:
+        complexity = "complex"
+    elif len(text.split()) > 20:
+        complexity = "moderate"  
+    else:
+        complexity = "simple"
+    
+    return {
+        **state,
+        "processing_complexity": complexity
+    }
+
+def simple_processor(state: ComplexRoutingState) -> ComplexRoutingState:
+    """Handle simple processing"""
+    return {
+        **state,
+        "result": f"Simple processing: {state['user_input'][:50]}...",
+        "route_taken": "simple"
+    }
+
+def moderate_processor(state: ComplexRoutingState) -> ComplexRoutingState:
+    """Handle moderate processing"""
+    return {
+        **state,
+        "result": f"Moderate processing: {len(state['user_input'])} chars analyzed",
+        "route_taken": "moderate"
+    }
+
+def complex_processor(state: ComplexRoutingState) -> ComplexRoutingState:
+    """Handle complex processing"""
+    return {
+        **state,
+        "result": f"Complex processing: {state['user_input'].count('.')} sentences processed",
+        "route_taken": "complex"
+    }
+
+def premium_complex_processor(state: ComplexRoutingState) -> ComplexRoutingState:
+    """Handle premium complex processing with advanced features"""
+    word_count = len(state['user_input'].split())
+    sentence_count = state['user_input'].count('.')
+    return {
+        **state,
+        "result": f"Premium complex: {word_count} words, {sentence_count} sentences with AI enhancement",
+        "route_taken": "premium_complex"
+    }
+
+def route_by_complexity_and_tier(state: ComplexRoutingState) -> Literal[
+    "simple", "moderate", "complex", "premium_complex"
+]:
+    """Route based on both complexity and user tier"""
+    complexity = state["processing_complexity"]
+    tier = state["user_tier"]
+    
+    # Premium users get special treatment for complex tasks
+    if complexity == "complex" and tier == "premium":
+        return "premium_complex"
+    elif complexity == "complex":
+        return "complex"
+    elif complexity == "moderate":
+        return "moderate"
+    else:
+        return "simple"
+
+# Create multi-condition routing graph
+graph = StateGraph(ComplexRoutingState)
+
+# Add nodes
+graph.add_node("analyzer", analyze_complexity)
+graph.add_node("simple", simple_processor)
+graph.add_node("moderate", moderate_processor)
+graph.add_node("complex", complex_processor)
+graph.add_node("premium_complex", premium_complex_processor)
+
+# Flow
+graph.add_edge(START, "analyzer")
+graph.add_conditional_edge(
+    "analyzer",
+    route_by_complexity_and_tier,
+    {
+        "simple": "simple",
+        "moderate": "moderate", 
+        "complex": "complex",
+        "premium_complex": "premium_complex"
+    }
+)
+
+# All processors end the flow
+graph.add_edge("simple", END)
+graph.add_edge("moderate", END)
+graph.add_edge("complex", END)
+graph.add_edge("premium_complex", END)
+
+app = graph.compile()
+```
+
+### 8.3 Advanced Edge Patterns
+
+#### Dynamic Edge Creation
+
+```python
+from typing import TypedDict, List, Dict, Any
+
+class DynamicRoutingState(TypedDict):
+    tasks: List[Dict[str, Any]]
+    completed_tasks: List[str]
+    current_task: Dict[str, Any]
+    results: Dict[str, Any]
+
+def task_dispatcher(state: DynamicRoutingState) -> DynamicRoutingState:
+    """Dispatch tasks dynamically"""
+    if not state["tasks"]:
+        return state
+        
+    # Get next task
+    next_task = state["tasks"][0]
+    remaining_tasks = state["tasks"][1:]
+    
+    return {
+        **state,
+        "current_task": next_task,
+        "tasks": remaining_tasks
+    }
+
+def task_processor_a(state: DynamicRoutingState) -> DynamicRoutingState:
+    """Process type A tasks"""
+    task = state["current_task"]
+    result = f"Processed A: {task['data']}"
+    
+    results = {**state["results"]}
+    results[task["id"]] = result
+    
+    completed = state["completed_tasks"] + [task["id"]]
+    
+    return {
+        **state,
+        "results": results,
+        "completed_tasks": completed
+    }
+
+def task_processor_b(state: DynamicRoutingState) -> DynamicRoutingState:
+    """Process type B tasks"""
+    task = state["current_task"]
+    result = f"Processed B: {task['data']}"
+    
+    results = {**state["results"]}
+    results[task["id"]] = result
+    
+    completed = state["completed_tasks"] + [task["id"]]
+    
+    return {
+        **state,
+        "results": results,
+        "completed_tasks": completed
+    }
+
+def route_by_task_type(state: DynamicRoutingState) -> str:
+    """Route based on task type"""
+    if not state["current_task"]:
+        return "end"
+    
+    task_type = state["current_task"].get("type", "unknown")
+    
+    if task_type == "type_a":
+        return "processor_a"
+    elif task_type == "type_b": 
+        return "processor_b"
+    else:
+        return "end"
+
+def should_continue(state: DynamicRoutingState) -> str:
+    """Decide whether to continue processing or end"""
+    if state["tasks"]:
+        return "dispatcher"  # More tasks to process
+    else:
+        return "end"  # No more tasks
+
+# Create dynamic routing graph  
+graph = StateGraph(DynamicRoutingState)
+
+# Add nodes
+graph.add_node("dispatcher", task_dispatcher)
+graph.add_node("processor_a", task_processor_a)
+graph.add_node("processor_b", task_processor_b)
+
+# Entry point
+graph.add_edge(START, "dispatcher")
+
+# Dynamic routing from dispatcher
+graph.add_conditional_edge(
+    "dispatcher",
+    route_by_task_type,
+    {
+        "processor_a": "processor_a",
+        "processor_b": "processor_b",
+        "end": END
+    }
+)
+
+# Continue or end after processing
+graph.add_conditional_edge(
+    "processor_a",
+    should_continue,
+    {
+        "dispatcher": "dispatcher",
+        "end": END
+    }
+)
+
+graph.add_conditional_edge(
+    "processor_b", 
+    should_continue,
+    {
+        "dispatcher": "dispatcher",
+        "end": END
+    }
+)
+
+app = graph.compile()
+```
+
+#### Loop and Retry Patterns
+
+```python
+from typing import TypedDict, Optional
+import random
+import time
+
+class RetryState(TypedDict):
+    data: str
+    attempt_count: int
+    max_attempts: int
+    success: bool
+    error_message: Optional[str]
+    result: Optional[str]
+
+def unreliable_processor(state: RetryState) -> RetryState:
+    """Simulates an unreliable processing node"""
+    attempt = state["attempt_count"] + 1
+    
+    # Simulate occasional failures (30% failure rate)
+    if random.random() < 0.3:
+        return {
+            **state,
+            "attempt_count": attempt,
+            "success": False,
+            "error_message": f"Processing failed on attempt {attempt}"
+        }
+    
+    # Success case
+    return {
+        **state,
+        "attempt_count": attempt,
+        "success": True,
+        "error_message": None,
+        "result": f"Successfully processed: {state['data']}"
+    }
+
+def error_handler(state: RetryState) -> RetryState:
+    """Handle processing errors"""
+    return {
+        **state,
+        "error_message": f"Max attempts ({state['max_attempts']}) exceeded"
+    }
+
+def should_retry(state: RetryState) -> str:
+    """Decide whether to retry, succeed, or fail"""
+    if state["success"]:
+        return "success"
+    elif state["attempt_count"] >= state["max_attempts"]:
+        return "max_attempts_reached"
+    else:
+        return "retry"
+
+# Create retry pattern graph
+graph = StateGraph(RetryState)
+
+# Add nodes
+graph.add_node("processor", unreliable_processor)
+graph.add_node("error_handler", error_handler)
+
+# Start processing
+graph.add_edge(START, "processor")
+
+# Conditional retry logic
+graph.add_conditional_edge(
+    "processor",
+    should_retry,
+    {
+        "success": END,                    # Success - end flow
+        "retry": "processor",              # Retry - go back to processor
+        "max_attempts_reached": "error_handler"  # Failed - handle error
+    }
+)
+
+# Error handler ends the flow
+graph.add_edge("error_handler", END)
+
+app = graph.compile()
+```
+
+### 8.4 Edge Testing and Debugging
+
+#### Testing Edge Conditions
+
+```python
+import pytest
+from typing import TypedDict
+
+class TestState(TypedDict):
+    value: int
+    category: str
+    result: str
+
+def categorizer(state: TestState) -> TestState:
+    """Categorize values"""
+    value = state["value"]
+    
+    if value < 0:
+        category = "negative"
+    elif value == 0:
+        category = "zero"  
+    elif value <= 10:
+        category = "small_positive"
+    else:
+        category = "large_positive"
+    
+    return {
+        **state,
+        "category": category
+    }
+
+def route_by_category(state: TestState) -> str:
+    """Route based on category"""
+    return state["category"]
+
+def negative_handler(state: TestState) -> TestState:
+    return {**state, "result": "Handled negative"}
+
+def zero_handler(state: TestState) -> TestState:
+    return {**state, "result": "Handled zero"}
+
+def small_positive_handler(state: TestState) -> TestState:
+    return {**state, "result": "Handled small positive"}
+
+def large_positive_handler(state: TestState) -> TestState:
+    return {**state, "result": "Handled large positive"}
+
+# Test routing function directly
+@pytest.mark.unit
+class TestEdgeRouting:
+    """Test edge routing logic"""
+    
+    def test_negative_routing(self):
+        """Test routing for negative values"""
+        state = {"value": -5, "category": "", "result": ""}
+        categorized = categorizer(state)
+        route = route_by_category(categorized)
+        assert route == "negative"
+    
+    def test_zero_routing(self):
+        """Test routing for zero value"""
+        state = {"value": 0, "category": "", "result": ""}
+        categorized = categorizer(state)
+        route = route_by_category(categorized)
+        assert route == "zero"
+    
+    def test_small_positive_routing(self):
+        """Test routing for small positive values"""
+        state = {"value": 5, "category": "", "result": ""}
+        categorized = categorizer(state)
+        route = route_by_category(categorized)
+        assert route == "small_positive"
+    
+    def test_large_positive_routing(self):
+        """Test routing for large positive values"""
+        state = {"value": 15, "category": "", "result": ""}
+        categorized = categorizer(state)
+        route = route_by_category(categorized)
+        assert route == "large_positive"
+
+# Test complete graph execution
+@pytest.mark.integration 
+def test_complete_conditional_flow():
+    """Test complete conditional flow execution"""
+    # Create test graph
+    graph = StateGraph(TestState)
+    
+    graph.add_node("categorizer", categorizer)
+    graph.add_node("negative", negative_handler)
+    graph.add_node("zero", zero_handler)
+    graph.add_node("small_positive", small_positive_handler)
+    graph.add_node("large_positive", large_positive_handler)
+    
+    graph.add_edge(START, "categorizer")
+    graph.add_conditional_edge(
+        "categorizer",
+        route_by_category,
+        {
+            "negative": "negative",
+            "zero": "zero",
+            "small_positive": "small_positive",
+            "large_positive": "large_positive"
+        }
+    )
+    
+    for handler in ["negative", "zero", "small_positive", "large_positive"]:
+        graph.add_edge(handler, END)
+    
+    app = graph.compile()
+    
+    # Test different routing scenarios
+    test_cases = [
+        ({"value": -3, "category": "", "result": ""}, "Handled negative"),
+        ({"value": 0, "category": "", "result": ""}, "Handled zero"), 
+        ({"value": 7, "category": "", "result": ""}, "Handled small positive"),
+        ({"value": 20, "category": "", "result": ""}, "Handled large positive"),
+    ]
+    
+    for input_state, expected_result in test_cases:
+        result = app.invoke(input_state)
+        assert result["result"] == expected_result
+```
+
+#### Edge Performance Monitoring
+
+```python
+import time
+import logging
+from functools import wraps
+from typing import TypedDict, Callable, Any
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+class MonitoredState(TypedDict):
+    data: str
+    processing_path: list
+    timing_info: dict
+
+def monitor_edge_performance(func: Callable) -> Callable:
+    """Decorator to monitor edge routing performance"""
+    @wraps(func)
+    def wrapper(state: MonitoredState) -> str:
+        start_time = time.time()
+        
+        try:
+            result = func(state)
+            execution_time = time.time() - start_time
+            
+            # Log routing decision
+            logger.info(f"Edge routing: {func.__name__} -> {result} ({execution_time:.4f}s)")
+            
+            return result
+            
+        except Exception as e:
+            execution_time = time.time() - start_time
+            logger.error(f"Edge routing error in {func.__name__}: {e} ({execution_time:.4f}s)")
+            raise
+    
+    return wrapper
+
+@monitor_edge_performance
+def monitored_router(state: MonitoredState) -> str:
+    """Example router with performance monitoring"""
+    # Simulate routing logic
+    time.sleep(0.01)  # Simulate processing time
+    
+    if len(state["data"]) > 100:
+        return "complex_processor"
+    else:
+        return "simple_processor"
+
+def simple_processor(state: MonitoredState) -> MonitoredState:
+    """Simple processing node"""
+    return {
+        **state,
+        "processing_path": state["processing_path"] + ["simple"],
+        "timing_info": {
+            **state["timing_info"],
+            "simple_processor": time.time()
+        }
+    }
+
+def complex_processor(state: MonitoredState) -> MonitoredState:
+    """Complex processing node"""
+    return {
+        **state,
+        "processing_path": state["processing_path"] + ["complex"],
+        "timing_info": {
+            **state["timing_info"],
+            "complex_processor": time.time()
+        }
+    }
+```
+
+### 8.5 Best Practices for Edge Configuration
+
+#### Edge Design Principles
+
+1. **Clear Routing Logic**: Make routing conditions explicit and testable
+2. **Fail-Safe Defaults**: Always provide fallback routes for unexpected conditions
+3. **Performance Awareness**: Monitor edge routing performance in complex graphs
+4. **State Preservation**: Ensure edges don't lose critical state information
+5. **Debugging Support**: Include logging and monitoring for routing decisions
+
+#### Common Edge Patterns Summary
+
+```python
+"""
+Edge Pattern Reference Guide
+
+1. Sequential Flow:
+   A → B → C → END
+   
+2. Fan-Out (Parallel):
+   A → B
+   A → C  
+   A → D
+   
+3. Fan-In (Aggregation):
+   A → D
+   B → D
+   C → D
+   
+4. Conditional Routing:
+   A → router() → {B, C, D}
+   
+5. Loop/Retry:
+   A → condition() → {A, B, END}
+   
+6. Multi-Path Conditional:
+   A → complex_router() → {B, C, D, E}
+   
+Use these patterns as building blocks for more complex graphs.
+"""
+```
+
+---
+
+## 9. Memory and Checkpointing
+
+Memory and checkpointing enable LangGraph applications to persist state across executions, handle interruptions gracefully, and support long-running processes. This section covers everything from basic persistence to advanced recovery patterns.
+
+### 9.1 Understanding Memory Systems
+
+#### Memory Concepts in LangGraph
+
+```python
+from typing import TypedDict, List, Dict, Any, Optional
+from langgraph.graph import StateGraph, START, END
+from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.sqlite import SqliteSaver
+import sqlite3
+from datetime import datetime
+
+class ConversationState(TypedDict):
+    messages: List[Dict[str, str]]
+    user_id: str
+    session_id: str
+    context: Dict[str, Any]
+    last_updated: str
+
+def add_message_node(state: ConversationState) -> ConversationState:
+    """Add a new message to the conversation"""
+    # This would typically receive a new message from input
+    new_message = {
+        "role": "assistant", 
+        "content": "This is a response from the system",
+        "timestamp": datetime.now().isoformat()
+    }
+    
+    messages = state["messages"] + [new_message]
+    
+    return {
+        **state,
+        "messages": messages,
+        "last_updated": datetime.now().isoformat()
+    }
+
+def update_context_node(state: ConversationState) -> ConversationState:
+    """Update conversation context"""
+    # Extract context from recent messages
+    recent_messages = state["messages"][-5:]  # Last 5 messages
+    
+    context_update = {
+        "message_count": len(state["messages"]),
+        "last_message_time": datetime.now().isoformat(),
+        "conversation_length": sum(len(msg["content"]) for msg in recent_messages)
+    }
+    
+    return {
+        **state,
+        "context": {**state["context"], **context_update}
+    }
+
+# Create graph with in-memory checkpointer
+memory_saver = MemorySaver()
+
+graph = StateGraph(ConversationState)
+graph.add_node("add_message", add_message_node)
+graph.add_node("update_context", update_context_node)
+
+graph.add_edge(START, "add_message")
+graph.add_edge("add_message", "update_context") 
+graph.add_edge("update_context", END)
+
+# Compile with memory
+app = graph.compile(checkpointer=memory_saver)
+```
+
+#### Persistent Memory with SQLite
+
+```python
+from langgraph.checkpoint.sqlite import SqliteSaver
+import sqlite3
+
+# Create persistent memory saver
+def create_persistent_memory_app():
+    """Create app with SQLite-backed memory"""
+    
+    # Setup SQLite connection
+    connection = sqlite3.connect("conversation_memory.db", check_same_thread=False)
+    
+    # Create SQLite checkpointer
+    sqlite_saver = SqliteSaver(connection)
+    
+    # Use same graph structure as before
+    graph = StateGraph(ConversationState)
+    graph.add_node("add_message", add_message_node)
+    graph.add_node("update_context", update_context_node)
+    
+    graph.add_edge(START, "add_message")
+    graph.add_edge("add_message", "update_context")
+    graph.add_edge("update_context", END)
+    
+    # Compile with persistent memory
+    return graph.compile(checkpointer=sqlite_saver)
+
+# Usage with thread-based conversations
+def run_persistent_conversation():
+    """Example of running persistent conversation"""
+    app = create_persistent_memory_app()
+    
+    # Configuration for this conversation thread
+    config = {
+        "configurable": {
+            "thread_id": "user_123_session_456"
+        }
+    }
+    
+    # Initial state
+    initial_state = {
+        "messages": [
+            {"role": "user", "content": "Hello, I want to learn about AI", "timestamp": datetime.now().isoformat()}
+        ],
+        "user_id": "user_123",
+        "session_id": "session_456", 
+        "context": {"topic": "ai_learning"},
+        "last_updated": datetime.now().isoformat()
+    }
+    
+    # Run conversation - state will be persisted
+    result = app.invoke(initial_state, config=config)
+    
+    print(f"Conversation has {len(result['messages'])} messages")
+    print(f"Last updated: {result['last_updated']}")
+    
+    return result
+
+# Later, resume the same conversation
+def resume_conversation():
+    """Resume conversation from persisted state"""
+    app = create_persistent_memory_app()
+    
+    # Same config to access the same thread
+    config = {
+        "configurable": {
+            "thread_id": "user_123_session_456"
+        }
+    }
+    
+    # Get current state (will load from SQLite)
+    current_state = app.get_state(config)
+    print(f"Resumed conversation with {len(current_state.values['messages'])} existing messages")
+    
+    # Continue conversation
+    new_message_state = {
+        **current_state.values,
+        "messages": current_state.values["messages"] + [
+            {"role": "user", "content": "Can you tell me more?", "timestamp": datetime.now().isoformat()}
+        ]
+    }
+    
+    result = app.invoke(new_message_state, config=config)
+    return result
+```
+
+### 9.2 Advanced Checkpointing Patterns
+
+#### Custom Memory Implementations
+
+```python
+from typing import Any, Dict, Optional
+from langgraph.checkpoint.base import Checkpointer, Checkpoint, CheckpointConfig
+import json
+import hashlib
+from pathlib import Path
+
+class FileSystemCheckpointer(Checkpointer):
+    """Custom file-based checkpointer"""
+    
+    def __init__(self, base_path: str):
+        self.base_path = Path(base_path)
+        self.base_path.mkdir(exist_ok=True, parents=True)
+    
+    def _get_checkpoint_path(self, config: CheckpointConfig) -> Path:
+        """Generate checkpoint file path"""
+        thread_id = config.get("configurable", {}).get("thread_id", "default")
+        # Create safe filename from thread_id
+        safe_name = hashlib.md5(thread_id.encode()).hexdigest()
+        return self.base_path / f"checkpoint_{safe_name}.json"
+    
+    def put(self, config: CheckpointConfig, checkpoint: Checkpoint) -> None:
+        """Save checkpoint to file system"""
+        checkpoint_path = self._get_checkpoint_path(config)
+        
+        checkpoint_data = {
+            "id": checkpoint["id"],
+            "values": checkpoint["values"],
+            "next": checkpoint.get("next", []),
+            "timestamp": datetime.now().isoformat(),
+            "config": config
+        }
+        
+        with open(checkpoint_path, 'w') as f:
+            json.dump(checkpoint_data, f, indent=2, default=str)
+    
+    def get(self, config: CheckpointConfig) -> Optional[Checkpoint]:
+        """Load checkpoint from file system"""
+        checkpoint_path = self._get_checkpoint_path(config)
+        
+        if not checkpoint_path.exists():
+            return None
+        
+        try:
+            with open(checkpoint_path, 'r') as f:
+                data = json.load(f)
+            
+            return {
+                "id": data["id"],
+                "values": data["values"],
+                "next": data.get("next", [])
+            }
+        except (json.JSONDecodeError, KeyError) as e:
+            print(f"Error loading checkpoint: {e}")
+            return None
+    
+    def list(self, config: CheckpointConfig) -> List[Checkpoint]:
+        """List all checkpoints (simplified implementation)"""
+        checkpoint = self.get(config)
+        return [checkpoint] if checkpoint else []
+
+# Usage with custom checkpointer
+def create_app_with_file_checkpointer():
+    """Create app with file-based checkpointer"""
+    file_checkpointer = FileSystemCheckpointer("./checkpoints")
+    
+    graph = StateGraph(ConversationState)
+    graph.add_node("add_message", add_message_node)
+    graph.add_node("update_context", update_context_node)
+    
+    graph.add_edge(START, "add_message")
+    graph.add_edge("add_message", "update_context")
+    graph.add_edge("update_context", END)
+    
+    return graph.compile(checkpointer=file_checkpointer)
+```
+
+#### Distributed Memory Systems
+
+```python
+import redis
+import pickle
+from typing import Any, Dict, Optional, List
+
+class RedisCheckpointer(Checkpointer):
+    """Redis-based distributed checkpointer"""
+    
+    def __init__(self, redis_url: str = "redis://localhost:6379", prefix: str = "langgraph"):
+        self.redis_client = redis.from_url(redis_url)
+        self.prefix = prefix
+    
+    def _get_key(self, config: CheckpointConfig) -> str:
+        """Generate Redis key"""
+        thread_id = config.get("configurable", {}).get("thread_id", "default")
+        return f"{self.prefix}:checkpoint:{thread_id}"
+    
+    def put(self, config: CheckpointConfig, checkpoint: Checkpoint) -> None:
+        """Save checkpoint to Redis"""
+        key = self._get_key(config)
+        
+        # Serialize checkpoint
+        checkpoint_data = {
+            "id": checkpoint["id"],
+            "values": checkpoint["values"],
+            "next": checkpoint.get("next", []),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        serialized = pickle.dumps(checkpoint_data)
+        
+        # Store with expiration (24 hours)
+        self.redis_client.setex(key, 86400, serialized)
+    
+    def get(self, config: CheckpointConfig) -> Optional[Checkpoint]:
+        """Load checkpoint from Redis"""
+        key = self._get_key(config)
+        
+        try:
+            serialized = self.redis_client.get(key)
+            if not serialized:
+                return None
+            
+            data = pickle.loads(serialized)
+            
+            return {
+                "id": data["id"],
+                "values": data["values"], 
+                "next": data.get("next", [])
+            }
+        except (pickle.PickleError, redis.RedisError) as e:
+            print(f"Error loading from Redis: {e}")
+            return None
+    
+    def list(self, config: CheckpointConfig) -> List[Checkpoint]:
+        """List checkpoints (simplified)"""
+        checkpoint = self.get(config)
+        return [checkpoint] if checkpoint else []
+
+# High-availability memory setup
+def create_ha_memory_app():
+    """Create app with high-availability memory"""
+    
+    # Primary Redis instance
+    primary_checkpointer = RedisCheckpointer("redis://primary:6379", "primary")
+    
+    # Could implement failover logic here
+    
+    graph = StateGraph(ConversationState)
+    graph.add_node("add_message", add_message_node)
+    graph.add_node("update_context", update_context_node)
+    
+    graph.add_edge(START, "add_message")
+    graph.add_edge("add_message", "update_context")
+    graph.add_edge("update_context", END)
+    
+    return graph.compile(checkpointer=primary_checkpointer)
+```
+
+### 9.3 State Recovery and Interruption Handling
+
+#### Graceful Interruption Handling
+
+```python
+from typing import TypedDict, List, Dict, Any
+import time
+import signal
+import sys
+from langgraph.graph import StateGraph, START, END, interrupt
+
+class InterruptibleState(TypedDict):
+    tasks: List[str]
+    completed_tasks: List[str]
+    current_task: str
+    progress: Dict[str, Any]
+    interrupted: bool
+
+def long_running_processor(state: InterruptibleState) -> InterruptibleState:
+    """Simulate long-running process that can be interrupted"""
+    
+    if not state["tasks"]:
+        return {**state, "current_task": ""}
+    
+    current_task = state["tasks"][0]
+    remaining_tasks = state["tasks"][1:]
+    
+    # Update state to show current task
+    updated_state = {
+        **state,
+        "current_task": current_task,
+        "tasks": remaining_tasks
+    }
+    
+    # Simulate work with checkpoints
+    for i in range(5):  # 5 steps of work
+        time.sleep(1)  # Simulate processing time
+        
+        # Check for interruption signal
+        if updated_state.get("interrupted", False):
+            # Save progress and interrupt
+            updated_state["progress"][current_task] = f"Step {i+1}/5"
+            interrupt(f"Processing interrupted at step {i+1} of task: {current_task}")
+        
+        # Update progress
+        updated_state["progress"][current_task] = f"Step {i+1}/5"
+    
+    # Task completed
+    completed = updated_state["completed_tasks"] + [current_task]
+    updated_state["completed_tasks"] = completed
+    updated_state["current_task"] = ""
+    
+    return updated_state
+
+def should_continue_processing(state: InterruptibleState) -> str:
+    """Decide whether to continue or stop"""
+    if state["tasks"]:
+        return "continue"
+    else:
+        return "complete"
+
+# Create interruptible graph
+def create_interruptible_app():
+    """Create app that can handle interruptions gracefully"""
+    
+    graph = StateGraph(InterruptibleState)
+    graph.add_node("processor", long_running_processor)
+    
+    graph.add_edge(START, "processor")
+    graph.add_conditional_edge(
+        "processor",
+        should_continue_processing,
+        {
+            "continue": "processor",  # Loop back for more tasks
+            "complete": END
+        }
+    )
+    
+    # Use SQLite for persistence
+    conn = sqlite3.connect("interruption_recovery.db", check_same_thread=False)
+    checkpointer = SqliteSaver(conn)
+    
+    return graph.compile(checkpointer=checkpointer)
+
+# Interruption recovery example
+def handle_interruption_recovery():
+    """Example of handling and recovering from interruptions"""
+    app = create_interruptible_app()
+    
+    config = {"configurable": {"thread_id": "long_process_123"}}
+    
+    initial_state = {
+        "tasks": ["task_1", "task_2", "task_3", "task_4"],
+        "completed_tasks": [],
+        "current_task": "",
+        "progress": {},
+        "interrupted": False
+    }
+    
+    try:
+        # Start processing
+        result = app.invoke(initial_state, config=config)
+        print(f"Completed all tasks: {result['completed_tasks']}")
+        
+    except Exception as e:
+        print(f"Process was interrupted: {e}")
+        
+        # Later, resume from checkpoint
+        print("Resuming from checkpoint...")
+        
+        # Get current state
+        current_state = app.get_state(config)
+        
+        if current_state:
+            print(f"Resuming with {len(current_state.values['tasks'])} remaining tasks")
+            print(f"Progress: {current_state.values['progress']}")
+            
+            # Resume processing
+            resumed_result = app.invoke(current_state.values, config=config)
+            print(f"Finally completed: {resumed_result['completed_tasks']}")
+```
+
+### 9.4 Memory Optimization and Management
+
+#### Memory Cleanup and Optimization
+
+```python
+from datetime import datetime, timedelta
+import sqlite3
+from typing import List, Dict, Any
+
+class OptimizedMemoryManager:
+    """Manager for memory optimization and cleanup"""
+    
+    def __init__(self, db_path: str):
+        self.db_path = db_path
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
+    
+    def cleanup_old_checkpoints(self, max_age_days: int = 7) -> int:
+        """Clean up checkpoints older than max_age_days"""
+        cutoff_date = datetime.now() - timedelta(days=max_age_days)
+        
+        cursor = self.conn.cursor()
+        cursor.execute(
+            "DELETE FROM checkpoints WHERE created_at < ?", 
+            (cutoff_date.isoformat(),)
+        )
+        
+        deleted_count = cursor.rowcount
+        self.conn.commit()
+        
+        print(f"Cleaned up {deleted_count} old checkpoints")
+        return deleted_count
+    
+    def get_memory_usage_stats(self) -> Dict[str, Any]:
+        """Get memory usage statistics"""
+        cursor = self.conn.cursor()
+        
+        # Total checkpoints
+        cursor.execute("SELECT COUNT(*) FROM checkpoints")
+        total_checkpoints = cursor.fetchone()[0]
+        
+        # Database size
+        cursor.execute("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size()")
+        db_size = cursor.fetchone()[0]
+        
+        # Active threads
+        cursor.execute("SELECT COUNT(DISTINCT thread_id) FROM checkpoints")
+        active_threads = cursor.fetchone()[0]
+        
+        return {
+            "total_checkpoints": total_checkpoints,
+            "database_size_bytes": db_size,
+            "active_threads": active_threads,
+            "size_mb": round(db_size / (1024 * 1024), 2)
+        }
+    
+    def compress_checkpoint_history(self, thread_id: str, keep_last_n: int = 10) -> None:
+        """Keep only the last N checkpoints for a thread"""
+        cursor = self.conn.cursor()
+        
+        # Get checkpoint IDs to delete (all but the last keep_last_n)
+        cursor.execute("""
+            SELECT checkpoint_id FROM checkpoints 
+            WHERE thread_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT -1 OFFSET ?
+        """, (thread_id, keep_last_n))
+        
+        old_checkpoints = cursor.fetchall()
+        
+        if old_checkpoints:
+            checkpoint_ids = [cp[0] for cp in old_checkpoints]
+            placeholders = ','.join(['?' for _ in checkpoint_ids])
+            
+            cursor.execute(
+                f"DELETE FROM checkpoints WHERE checkpoint_id IN ({placeholders})",
+                checkpoint_ids
+            )
+            
+            self.conn.commit()
+            print(f"Compressed {len(checkpoint_ids)} old checkpoints for thread {thread_id}")
+
+# Memory-efficient state design
+class MemoryEfficientState(TypedDict):
+    """State designed for memory efficiency"""
+    
+    # Core data - always keep
+    essential_data: Dict[str, Any]
+    
+    # Temporary data - can be cleared
+    temp_processing_data: Dict[str, Any]
+    
+    # Cached data - can be recomputed
+    cached_results: Dict[str, Any]
+    
+    # Metadata for memory management
+    last_accessed: str
+    memory_level: str  # "minimal", "standard", "full"
+
+def memory_cleanup_node(state: MemoryEfficientState) -> MemoryEfficientState:
+    """Clean up memory based on access patterns"""
+    
+    memory_level = state.get("memory_level", "standard")
+    
+    if memory_level == "minimal":
+        # Keep only essential data
+        return {
+            "essential_data": state["essential_data"],
+            "temp_processing_data": {},
+            "cached_results": {},
+            "last_accessed": datetime.now().isoformat(),
+            "memory_level": "minimal"
+        }
+    elif memory_level == "standard":
+        # Keep essential + some cached data
+        return {
+            **state,
+            "temp_processing_data": {},  # Clear temp data
+            "last_accessed": datetime.now().isoformat()
+        }
+    else:
+        # Keep everything (full mode)
+        return {
+            **state,
+            "last_accessed": datetime.now().isoformat()
+        }
+```
+
+### 9.5 Testing Memory and Checkpointing
+
+#### Memory System Testing
+
+```python
+import pytest
+import tempfile
+import shutil
+from pathlib import Path
+
+class TestMemorySystem:
+    """Test memory and checkpointing functionality"""
+    
+    @pytest.fixture
+    def temp_db_path(self):
+        """Create temporary database for testing"""
+        temp_dir = tempfile.mkdtemp()
+        db_path = Path(temp_dir) / "test.db"
+        yield str(db_path)
+        shutil.rmtree(temp_dir)
+    
+    def test_basic_checkpointing(self, temp_db_path):
+        """Test basic checkpoint save and restore"""
+        
+        # Create app with SQLite checkpointer
+        conn = sqlite3.connect(temp_db_path, check_same_thread=False)
+        checkpointer = SqliteSaver(conn)
+        
+        graph = StateGraph(ConversationState)
+        graph.add_node("add_message", add_message_node)
+        graph.add_edge(START, "add_message")
+        graph.add_edge("add_message", END)
+        
+        app = graph.compile(checkpointer=checkpointer)
+        
+        # Test configuration
+        config = {"configurable": {"thread_id": "test_123"}}
+        
+        # Initial state
+        initial_state = {
+            "messages": [{"role": "user", "content": "Hello"}],
+            "user_id": "test_user",
+            "session_id": "test_session",
+            "context": {},
+            "last_updated": datetime.now().isoformat()
+        }
+        
+        # Run and checkpoint
+        result = app.invoke(initial_state, config=config)
+        
+        # Verify checkpoint exists
+        saved_state = app.get_state(config)
+        assert saved_state is not None
+        assert len(saved_state.values["messages"]) >= 1
+    
+    def test_checkpoint_recovery(self, temp_db_path):
+        """Test recovery from checkpoint"""
+        
+        conn = sqlite3.connect(temp_db_path, check_same_thread=False)
+        checkpointer = SqliteSaver(conn)
+        
+        # Create and run app first time
+        app1 = create_test_app(checkpointer)
+        config = {"configurable": {"thread_id": "recovery_test"}}
+        
+        initial_state = {
+            "messages": [{"role": "user", "content": "First message"}],
+            "user_id": "test_user",
+            "session_id": "test_session", 
+            "context": {"step": 1},
+            "last_updated": datetime.now().isoformat()
+        }
+        
+        result1 = app1.invoke(initial_state, config=config)
+        
+        # Create new app instance (simulates restart)
+        app2 = create_test_app(checkpointer)
+        
+        # Get state from checkpoint
+        recovered_state = app2.get_state(config)
+        
+        assert recovered_state is not None
+        assert recovered_state.values["context"]["step"] == 1
+        assert len(recovered_state.values["messages"]) > 0
+    
+    def test_memory_cleanup(self, temp_db_path):
+        """Test memory cleanup functionality"""
+        
+        memory_manager = OptimizedMemoryManager(temp_db_path)
+        
+        # Create some test checkpoints
+        conn = sqlite3.connect(temp_db_path, check_same_thread=False)
+        checkpointer = SqliteSaver(conn)
+        
+        app = create_test_app(checkpointer)
+        
+        # Create multiple checkpoint versions
+        for i in range(5):
+            config = {"configurable": {"thread_id": f"cleanup_test_{i}"}}
+            state = {
+                "messages": [{"role": "user", "content": f"Message {i}"}],
+                "user_id": "test_user",
+                "session_id": "test_session",
+                "context": {"iteration": i},
+                "last_updated": datetime.now().isoformat()
+            }
+            app.invoke(state, config=config)
+        
+        # Check initial stats
+        stats_before = memory_manager.get_memory_usage_stats()
+        assert stats_before["total_checkpoints"] >= 5
+        
+        # Test cleanup (won't delete much since they're recent)
+        deleted = memory_manager.cleanup_old_checkpoints(max_age_days=0)
+        
+        # Verify cleanup worked
+        stats_after = memory_manager.get_memory_usage_stats()
+        assert stats_after["total_checkpoints"] <= stats_before["total_checkpoints"]
+
+def create_test_app(checkpointer):
+    """Helper to create test app"""
+    graph = StateGraph(ConversationState)
+    graph.add_node("add_message", add_message_node)
+    graph.add_node("update_context", update_context_node)
+    
+    graph.add_edge(START, "add_message")
+    graph.add_edge("add_message", "update_context")
+    graph.add_edge("update_context", END)
+    
+    return graph.compile(checkpointer=checkpointer)
+```
+
+### 9.6 Best Practices for Memory Management
+
+#### Memory Design Principles
+
+1. **Selective Persistence**: Only checkpoint essential state data
+2. **Cleanup Strategies**: Implement regular cleanup of old checkpoints
+3. **Recovery Planning**: Design clear recovery paths for interrupted processes
+4. **Performance Monitoring**: Monitor memory usage and checkpoint performance
+5. **Data Lifecycle**: Define clear policies for data retention and archival
+
+#### Common Memory Patterns
+
+```python
+"""
+Memory Pattern Reference Guide
+
+1. Session-Based Memory:
+   - Use thread_id for user sessions
+   - Automatic cleanup after session timeout
+   
+2. Process-Based Memory:
+   - Checkpoint at major process milestones
+   - Enable resumption from interruptions
+   
+3. Distributed Memory:
+   - Use Redis/external systems for multi-instance apps
+   - Implement failover and backup strategies
+   
+4. Hierarchical Memory:
+   - Hot: In-memory for active sessions
+   - Warm: SQLite for recent sessions  
+   - Cold: Archive for historical data
+
+Choose patterns based on your application's scale and reliability needs.
+"""
+```
+
+---
+
+## 10. Multi-Agent Systems
+
+Multi-agent systems in LangGraph enable complex workflows where multiple specialized agents collaborate to solve problems. This section covers agent design patterns, coordination mechanisms, and advanced multi-agent architectures.
+
+### 10.1 Basic Multi-Agent Architecture
+
+#### Simple Agent Coordination
+
+```python
+from typing import TypedDict, List, Dict, Any, Literal
+from langgraph.graph import StateGraph, START, END
+from datetime import datetime
+
+class MultiAgentState(TypedDict):
+    user_query: str
+    research_results: Dict[str, Any]
+    analysis_results: Dict[str, Any]
+    final_report: str
+    agent_logs: List[Dict[str, Any]]
+    current_agent: str
+
+def research_agent(state: MultiAgentState) -> MultiAgentState:
+    """Research agent - gathers information"""
+    query = state["user_query"]
+    
+    # Simulate research process
+    research_data = {
+        "sources_found": 5,
+        "key_facts": [
+            f"Fact 1 about {query}",
+            f"Fact 2 about {query}",
+            f"Fact 3 about {query}"
+        ],
+        "confidence": 0.85,
+        "research_time": datetime.now().isoformat()
+    }
+    
+    # Log agent activity
+    log_entry = {
+        "agent": "research_agent",
+        "action": "research_completed", 
+        "timestamp": datetime.now().isoformat(),
+        "status": "success"
+    }
+    
+    return {
+        **state,
+        "research_results": research_data,
+        "agent_logs": state["agent_logs"] + [log_entry],
+        "current_agent": "research_agent"
+    }
+
+def analysis_agent(state: MultiAgentState) -> MultiAgentState:
+    """Analysis agent - processes research data"""
+    research = state["research_results"]
+    
+    # Analyze the research data
+    analysis = {
+        "summary": f"Analysis of {len(research['key_facts'])} key facts",
+        "confidence_score": research["confidence"],
+        "recommendations": [
+            "Recommendation 1 based on research",
+            "Recommendation 2 based on analysis",
+        ],
+        "analysis_time": datetime.now().isoformat()
+    }
+    
+    # Log agent activity
+    log_entry = {
+        "agent": "analysis_agent",
+        "action": "analysis_completed",
+        "timestamp": datetime.now().isoformat(),
+        "status": "success"
+    }
+    
+    return {
+        **state,
+        "analysis_results": analysis,
+        "agent_logs": state["agent_logs"] + [log_entry],
+        "current_agent": "analysis_agent"
+    }
+
+def report_agent(state: MultiAgentState) -> MultiAgentState:
+    """Report agent - creates final output"""
+    research = state["research_results"]
+    analysis = state["analysis_results"]
+    
+    # Generate comprehensive report
+    report = f"""
+    Research & Analysis Report
+    =========================
+    
+    Query: {state['user_query']}
+    
+    Research Summary:
+    - Sources found: {research['sources_found']}
+    - Key findings: {len(research['key_facts'])} facts
+    - Research confidence: {research['confidence']:.2f}
+    
+    Analysis Summary:
+    - {analysis['summary']}
+    - Confidence score: {analysis['confidence_score']:.2f}
+    - Recommendations: {len(analysis['recommendations'])}
+    
+    Final Recommendations:
+    {chr(10).join(f"- {rec}" for rec in analysis['recommendations'])}
+    
+    Report generated at: {datetime.now().isoformat()}
+    """
+    
+    # Log agent activity
+    log_entry = {
+        "agent": "report_agent",
+        "action": "report_generated",
+        "timestamp": datetime.now().isoformat(),
+        "status": "success"
+    }
+    
+    return {
+        **state,
+        "final_report": report,
+        "agent_logs": state["agent_logs"] + [log_entry],
+        "current_agent": "report_agent"
+    }
+
+# Create multi-agent workflow
+def create_basic_multi_agent_system():
+    """Create basic multi-agent system"""
+    
+    graph = StateGraph(MultiAgentState)
+    
+    # Add agent nodes
+    graph.add_node("researcher", research_agent)
+    graph.add_node("analyzer", analysis_agent) 
+    graph.add_node("reporter", report_agent)
+    
+    # Sequential workflow
+    graph.add_edge(START, "researcher")
+    graph.add_edge("researcher", "analyzer")
+    graph.add_edge("analyzer", "reporter")
+    graph.add_edge("reporter", END)
+    
+    return graph.compile()
+
+# Usage example
+def run_multi_agent_research():
+    """Example of running multi-agent research"""
+    app = create_basic_multi_agent_system()
+    
+    initial_state = {
+        "user_query": "What are the benefits of renewable energy?",
+        "research_results": {},
+        "analysis_results": {},
+        "final_report": "",
+        "agent_logs": [],
+        "current_agent": ""
+    }
+    
+    result = app.invoke(initial_state)
+    
+    print("=== AGENT EXECUTION LOG ===")
+    for log in result["agent_logs"]:
+        print(f"{log['timestamp']}: {log['agent']} - {log['action']} ({log['status']})")
+    
+    print("\n=== FINAL REPORT ===")
+    print(result["final_report"])
+    
+    return result
+```
+
+### 10.2 Advanced Agent Coordination Patterns
+
+#### Supervisor-Worker Pattern
+
+```python
+from typing import TypedDict, List, Dict, Any, Literal
+
+class SupervisorState(TypedDict):
+    user_request: str
+    task_assignments: List[Dict[str, Any]]
+    worker_results: Dict[str, Dict[str, Any]]
+    supervisor_decision: str
+    final_output: str
+    coordination_log: List[str]
+
+def supervisor_agent(state: SupervisorState) -> SupervisorState:
+    """Supervisor agent - coordinates and assigns tasks"""
+    request = state["user_request"]
+    
+    # Analyze request and create task assignments
+    if "data analysis" in request.lower():
+        assignments = [
+            {"worker": "data_worker", "task": "process_data", "priority": 1},
+            {"worker": "viz_worker", "task": "create_visualizations", "priority": 2}
+        ]
+        decision = "data_analysis_workflow"
+    elif "content creation" in request.lower():
+        assignments = [
+            {"worker": "research_worker", "task": "gather_information", "priority": 1},
+            {"worker": "writing_worker", "task": "create_content", "priority": 2}
+        ]
+        decision = "content_creation_workflow"
+    else:
+        assignments = [
+            {"worker": "general_worker", "task": "general_processing", "priority": 1}
+        ]
+        decision = "general_workflow"
+    
+    coordination_log = state["coordination_log"] + [
+        f"Supervisor assigned {len(assignments)} tasks for {decision}"
+    ]
+    
+    return {
+        **state,
+        "task_assignments": assignments,
+        "supervisor_decision": decision,
+        "coordination_log": coordination_log
+    }
+
+def data_worker_agent(state: SupervisorState) -> SupervisorState:
+    """Specialized data processing worker"""
+    
+    # Find relevant task assignment
+    task = next((t for t in state["task_assignments"] if t["worker"] == "data_worker"), None)
+    if not task:
+        return state
+    
+    # Perform data processing work
+    result = {
+        "task_completed": task["task"],
+        "data_processed": True,
+        "records_processed": 1500,
+        "processing_time": "2.3s",
+        "status": "completed"
+    }
+    
+    # Update results
+    worker_results = {**state["worker_results"]}
+    worker_results["data_worker"] = result
+    
+    coordination_log = state["coordination_log"] + [
+        "Data worker completed data processing task"
+    ]
+    
+    return {
+        **state,
+        "worker_results": worker_results,
+        "coordination_log": coordination_log
+    }
+
+def viz_worker_agent(state: SupervisorState) -> SupervisorState:
+    """Specialized visualization worker"""
+    
+    task = next((t for t in state["task_assignments"] if t["worker"] == "viz_worker"), None)
+    if not task:
+        return state
+    
+    # Check if data worker completed (dependency)
+    if "data_worker" not in state["worker_results"]:
+        return state  # Wait for dependency
+    
+    # Create visualizations
+    result = {
+        "task_completed": task["task"],
+        "charts_created": ["bar_chart", "line_chart", "pie_chart"],
+        "visualization_count": 3,
+        "status": "completed"
+    }
+    
+    worker_results = {**state["worker_results"]}
+    worker_results["viz_worker"] = result
+    
+    coordination_log = state["coordination_log"] + [
+        "Visualization worker completed chart creation"
+    ]
+    
+    return {
+        **state,
+        "worker_results": worker_results,
+        "coordination_log": coordination_log
+    }
+
+def final_coordinator(state: SupervisorState) -> SupervisorState:
+    """Final coordinator - combines all worker results"""
+    
+    # Combine results from all workers
+    output_parts = []
+    
+    for worker, result in state["worker_results"].items():
+        output_parts.append(f"{worker}: {result['task_completed']} - {result['status']}")
+    
+    final_output = f"""
+    Task Coordination Results
+    ========================
+    
+    Original Request: {state['user_request']}
+    Supervisor Decision: {state['supervisor_decision']}
+    
+    Worker Results:
+    {chr(10).join(f"- {part}" for part in output_parts)}
+    
+    Coordination Summary:
+    {chr(10).join(f"- {log}" for log in state['coordination_log'])}
+    """
+    
+    return {
+        **state,
+        "final_output": final_output
+    }
+
+def route_to_workers(state: SupervisorState) -> List[str]:
+    """Route to appropriate workers based on assignments"""
+    workers = [task["worker"] for task in state["task_assignments"]]
+    return workers
+
+# Create supervisor-worker system
+def create_supervisor_worker_system():
+    """Create supervisor-worker multi-agent system"""
+    
+    graph = StateGraph(SupervisorState)
+    
+    # Add agents
+    graph.add_node("supervisor", supervisor_agent)
+    graph.add_node("data_worker", data_worker_agent)
+    graph.add_node("viz_worker", viz_worker_agent)
+    graph.add_node("coordinator", final_coordinator)
+    
+    # Workflow
+    graph.add_edge(START, "supervisor")
+    
+    # Dynamic routing to workers
+    graph.add_conditional_edge(
+        "supervisor",
+        lambda state: "data_analysis" if state["supervisor_decision"] == "data_analysis_workflow" else "general",
+        {
+            "data_analysis": "data_worker",
+            "general": "coordinator"
+        }
+    )
+    
+    graph.add_edge("data_worker", "viz_worker")
+    graph.add_edge("viz_worker", "coordinator")
+    graph.add_edge("coordinator", END)
+    
+    return graph.compile()
+```
+
+### 10.3 Agent Communication and Coordination
+
+#### Message-Based Agent Communication
+
+```python
+from typing import TypedDict, List, Dict, Any, Optional
+from dataclasses import dataclass
+from datetime import datetime
+
+@dataclass
+class AgentMessage:
+    from_agent: str
+    to_agent: str
+    message_type: str
+    content: Dict[str, Any]
+    timestamp: str
+    priority: int = 1  # 1=high, 2=medium, 3=low
+
+class CommunicatingAgentState(TypedDict):
+    user_task: str
+    agent_messages: List[AgentMessage]
+    agent_states: Dict[str, Dict[str, Any]]
+    task_progress: Dict[str, str]
+    final_result: str
+
+def message_broker(state: CommunicatingAgentState) -> CommunicatingAgentState:
+    """Central message broker for agent communication"""
+    
+    # Sort messages by priority and timestamp
+    messages = state["agent_messages"]
+    unprocessed_messages = [msg for msg in messages if msg not in state.get("processed_messages", [])]
+    
+    # Process highest priority messages first
+    unprocessed_messages.sort(key=lambda x: (x.priority, x.timestamp))
+    
+    # Log message routing
+    routing_log = []
+    for msg in unprocessed_messages[:5]:  # Process top 5 messages
+        routing_log.append(f"Routing {msg.message_type} from {msg.from_agent} to {msg.to_agent}")
+    
+    return {
+        **state,
+        "routing_log": routing_log
+    }
+
+def planning_agent(state: CommunicatingAgentState) -> CommunicatingAgentState:
+    """Planning agent - creates task plans and coordinates"""
+    
+    task = state["user_task"]
+    
+    # Create task plan
+    plan = {
+        "task_breakdown": [
+            "research_phase",
+            "analysis_phase", 
+            "implementation_phase",
+            "review_phase"
+        ],
+        "agent_assignments": {
+            "research_phase": "research_agent",
+            "analysis_phase": "analysis_agent",
+            "implementation_phase": "implementation_agent",
+            "review_phase": "review_agent"
+        },
+        "dependencies": {
+            "analysis_phase": ["research_phase"],
+            "implementation_phase": ["analysis_phase"],
+            "review_phase": ["implementation_phase"]
+        }
+    }
+    
+    # Send planning messages to other agents
+    planning_messages = [
+        AgentMessage(
+            from_agent="planning_agent",
+            to_agent="research_agent",
+            message_type="task_assignment",
+            content={"phase": "research_phase", "task": task},
+            timestamp=datetime.now().isoformat(),
+            priority=1
+        ),
+        AgentMessage(
+            from_agent="planning_agent",
+            to_agent="coordination_agent",
+            message_type="plan_update",
+            content={"plan": plan},
+            timestamp=datetime.now().isoformat(),
+            priority=1
+        )
+    ]
+    
+    # Update agent state
+    agent_states = {**state["agent_states"]}
+    agent_states["planning_agent"] = {
+        "status": "plan_created",
+        "plan": plan,
+        "last_updated": datetime.now().isoformat()
+    }
+    
+    return {
+        **state,
+        "agent_messages": state["agent_messages"] + planning_messages,
+        "agent_states": agent_states,
+        "task_progress": {**state["task_progress"], "planning": "completed"}
+    }
+
+def research_agent_communicating(state: CommunicatingAgentState) -> CommunicatingAgentState:
+    """Research agent with communication capabilities"""
+    
+    # Check for messages addressed to this agent
+    my_messages = [msg for msg in state["agent_messages"] 
+                   if msg.to_agent == "research_agent" and msg.message_type == "task_assignment"]
+    
+    if not my_messages:
+        return state  # No work assigned yet
+    
+    latest_assignment = my_messages[-1]  # Get latest assignment
+    
+    # Perform research
+    research_results = {
+        "sources_found": 8,
+        "research_summary": f"Research completed for: {latest_assignment.content['task']}",
+        "confidence": 0.9,
+        "completion_time": datetime.now().isoformat()
+    }
+    
+    # Send results to analysis agent
+    result_message = AgentMessage(
+        from_agent="research_agent",
+        to_agent="analysis_agent",
+        message_type="research_results",
+        content=research_results,
+        timestamp=datetime.now().isoformat(),
+        priority=1
+    )
+    
+    # Send status update to planning agent
+    status_message = AgentMessage(
+        from_agent="research_agent",
+        to_agent="planning_agent", 
+        message_type="status_update",
+        content={"phase": "research_phase", "status": "completed"},
+        timestamp=datetime.now().isoformat(),
+        priority=2
+    )
+    
+    # Update own state
+    agent_states = {**state["agent_states"]}
+    agent_states["research_agent"] = {
+        "status": "research_completed",
+        "results": research_results,
+        "last_updated": datetime.now().isoformat()
+    }
+    
+    return {
+        **state,
+        "agent_messages": state["agent_messages"] + [result_message, status_message],
+        "agent_states": agent_states,
+        "task_progress": {**state["task_progress"], "research": "completed"}
+    }
+
+def analysis_agent_communicating(state: CommunicatingAgentState) -> CommunicatingAgentState:
+    """Analysis agent with communication capabilities"""
+    
+    # Check for research results
+    research_messages = [msg for msg in state["agent_messages"]
+                        if msg.to_agent == "analysis_agent" and msg.message_type == "research_results"]
+    
+    if not research_messages:
+        return state  # Waiting for research results
+    
+    latest_research = research_messages[-1]
+    research_data = latest_research.content
+    
+    # Perform analysis
+    analysis_results = {
+        "analysis_type": "comprehensive",
+        "insights": [
+            "Key insight 1 from research",
+            "Key insight 2 from research",
+            "Key insight 3 from research"
+        ],
+        "recommendations": [
+            "Recommendation based on analysis",
+            "Strategic suggestion from insights"
+        ],
+        "confidence": research_data["confidence"] * 0.95,  # Slightly lower due to analysis uncertainty
+        "completion_time": datetime.now().isoformat()
+    }
+    
+    # Send results to implementation agent
+    analysis_message = AgentMessage(
+        from_agent="analysis_agent",
+        to_agent="implementation_agent",
+        message_type="analysis_results",
+        content=analysis_results,
+        timestamp=datetime.now().isoformat(),
+        priority=1
+    )
+    
+    # Update state
+    agent_states = {**state["agent_states"]}
+    agent_states["analysis_agent"] = {
+        "status": "analysis_completed",
+        "results": analysis_results,
+        "last_updated": datetime.now().isoformat()
+    }
+    
+    return {
+        **state,
+        "agent_messages": state["agent_messages"] + [analysis_message],
+        "agent_states": agent_states,
+        "task_progress": {**state["task_progress"], "analysis": "completed"}
+    }
+```
+
+### 10.4 Specialized Agent Patterns
+
+#### Expert Agent Network
+
+```python
+from typing import TypedDict, List, Dict, Any, Set
+from enum import Enum
+
+class ExpertiseArea(Enum):
+    DATA_SCIENCE = "data_science"
+    SECURITY = "security"
+    PERFORMANCE = "performance"
+    USER_EXPERIENCE = "user_experience"
+    ARCHITECTURE = "architecture"
+
+class ExpertNetworkState(TypedDict):
+    problem_statement: str
+    required_expertise: List[str]
+    expert_opinions: Dict[str, Dict[str, Any]]
+    consensus_report: Dict[str, Any]
+    confidence_scores: Dict[str, float]
+    expert_recommendations: List[Dict[str, Any]]
+
+class ExpertAgent:
+    """Base class for expert agents"""
+    
+    def __init__(self, expertise_area: ExpertiseArea, confidence_threshold: float = 0.7):
+        self.expertise = expertise_area
+        self.confidence_threshold = confidence_threshold
+        self.name = f"{expertise_area.value}_expert"
+    
+    def can_handle_problem(self, problem_keywords: Set[str]) -> bool:
+        """Determine if this expert can handle the problem"""
+        expertise_keywords = {
+            ExpertiseArea.DATA_SCIENCE: {"data", "analysis", "machine learning", "statistics"},
+            ExpertiseArea.SECURITY: {"security", "vulnerability", "encryption", "authentication"},
+            ExpertiseArea.PERFORMANCE: {"performance", "optimization", "speed", "efficiency"},
+            ExpertiseArea.USER_EXPERIENCE: {"ux", "ui", "user", "interface", "usability"},
+            ExpertiseArea.ARCHITECTURE: {"architecture", "design", "scalability", "system"}
+        }
+        
+        return bool(problem_keywords.intersection(expertise_keywords.get(self.expertise, set())))
+    
+    def provide_expert_opinion(self, problem: str) -> Dict[str, Any]:
+        """Provide expert opinion on the problem"""
+        # This would be implemented differently for each expert
+        return {
+            "expert": self.name,
+            "opinion": f"Expert opinion from {self.expertise.value}",
+            "confidence": 0.8,
+            "recommendations": [],
+            "concerns": []
+        }
+
+def data_science_expert_agent(state: ExpertNetworkState) -> ExpertNetworkState:
+    """Data science expert agent"""
+    problem = state["problem_statement"]
+    
+    # Analyze problem from data science perspective
+    if any(keyword in problem.lower() for keyword in ["data", "analysis", "model", "prediction"]):
+        opinion = {
+            "expert": "data_science_expert",
+            "analysis": {
+                "data_requirements": "Large dataset needed for accurate modeling",
+                "recommended_approaches": [
+                    "Feature engineering and selection",
+                    "Cross-validation for model evaluation",
+                    "Ensemble methods for improved accuracy"
+                ],
+                "potential_challenges": [
+                    "Data quality and completeness",
+                    "Overfitting with small datasets",
+                    "Feature drift over time"
+                ],
+                "confidence": 0.85
+            },
+            "recommendations": [
+                "Implement robust data validation pipeline",
+                "Use A/B testing for model deployment",
+                "Monitor model performance continuously"
+            ]
+        }
+        
+        # Update expert opinions
+        expert_opinions = {**state["expert_opinions"]}
+        expert_opinions["data_science_expert"] = opinion
+        
+        confidence_scores = {**state["confidence_scores"]}
+        confidence_scores["data_science_expert"] = opinion["analysis"]["confidence"]
+        
+        return {
+            **state,
+            "expert_opinions": expert_opinions,
+            "confidence_scores": confidence_scores
+        }
+    
+    return state  # This expert doesn't handle this type of problem
+
+def security_expert_agent(state: ExpertNetworkState) -> ExpertNetworkState:
+    """Security expert agent"""
+    problem = state["problem_statement"]
+    
+    if any(keyword in problem.lower() for keyword in ["security", "auth", "vulnerability", "attack"]):
+        opinion = {
+            "expert": "security_expert",
+            "analysis": {
+                "security_assessment": "High priority security considerations identified",
+                "threat_vectors": [
+                    "Authentication bypass",
+                    "Data injection attacks",
+                    "Privilege escalation"
+                ],
+                "compliance_requirements": [
+                    "GDPR data protection",
+                    "SOC 2 compliance",
+                    "Industry-specific regulations"
+                ],
+                "confidence": 0.92
+            },
+            "recommendations": [
+                "Implement multi-factor authentication",
+                "Regular security audits and penetration testing",
+                "Zero-trust architecture principles"
+            ]
+        }
+        
+        expert_opinions = {**state["expert_opinions"]}
+        expert_opinions["security_expert"] = opinion
+        
+        confidence_scores = {**state["confidence_scores"]}
+        confidence_scores["security_expert"] = opinion["analysis"]["confidence"]
+        
+        return {
+            **state,
+            "expert_opinions": expert_opinions,
+            "confidence_scores": confidence_scores
+        }
+    
+    return state
+
+def consensus_coordinator_agent(state: ExpertNetworkState) -> ExpertNetworkState:
+    """Coordinator that builds consensus from expert opinions"""
+    
+    expert_opinions = state["expert_opinions"]
+    
+    if len(expert_opinions) < 2:
+        return state  # Wait for more expert opinions
+    
+    # Analyze expert consensus
+    all_recommendations = []
+    all_concerns = []
+    confidence_sum = 0
+    expert_count = 0
+    
+    for expert_name, opinion in expert_opinions.items():
+        if "recommendations" in opinion:
+            all_recommendations.extend(opinion["recommendations"])
+        if "analysis" in opinion:
+            analysis = opinion["analysis"]
+            if "potential_challenges" in analysis:
+                all_concerns.extend(analysis["potential_challenges"])
+            if "threat_vectors" in analysis:
+                all_concerns.extend(analysis["threat_vectors"])
+        
+        # Get confidence score
+        confidence = state["confidence_scores"].get(expert_name, 0)
+        confidence_sum += confidence
+        expert_count += 1
+    
+    # Build consensus report
+    consensus = {
+        "participating_experts": list(expert_opinions.keys()),
+        "average_confidence": confidence_sum / expert_count if expert_count > 0 else 0,
+        "consolidated_recommendations": list(set(all_recommendations)),  # Remove duplicates
+        "identified_concerns": list(set(all_concerns)),
+        "consensus_level": "high" if confidence_sum / expert_count > 0.8 else "medium",
+        "report_generated_at": datetime.now().isoformat()
+    }
+    
+    # Create prioritized recommendations
+    expert_recommendations = []
+    for i, rec in enumerate(consensus["consolidated_recommendations"][:5]):  # Top 5
+        expert_recommendations.append({
+            "recommendation": rec,
+            "priority": i + 1,
+            "supporting_experts": len([e for e in expert_opinions.values() 
+                                    if "recommendations" in e and rec in e["recommendations"]])
+        })
+    
+    return {
+        **state,
+        "consensus_report": consensus,
+        "expert_recommendations": expert_recommendations
+    }
+
+# Create expert network system
+def create_expert_network_system():
+    """Create expert network multi-agent system"""
+    
+    graph = StateGraph(ExpertNetworkState)
+    
+    # Add expert agents
+    graph.add_node("data_science_expert", data_science_expert_agent)
+    graph.add_node("security_expert", security_expert_agent)
+    graph.add_node("consensus_coordinator", consensus_coordinator_agent)
+    
+    # Parallel expert consultation
+    graph.add_edge(START, "data_science_expert")
+    graph.add_edge(START, "security_expert")
+    
+    # Both experts feed into consensus coordinator
+    graph.add_edge("data_science_expert", "consensus_coordinator")
+    graph.add_edge("security_expert", "consensus_coordinator")
+    graph.add_edge("consensus_coordinator", END)
+    
+    return graph.compile()
+```
+
+### 10.5 Testing Multi-Agent Systems
+
+#### Multi-Agent System Testing
+
+```python
+import pytest
+from unittest.mock import Mock, patch
+from datetime import datetime
+
+class TestMultiAgentSystem:
+    """Test multi-agent system functionality"""
+    
+    def test_basic_agent_coordination(self):
+        """Test basic multi-agent workflow"""
+        app = create_basic_multi_agent_system()
+        
+        initial_state = {
+            "user_query": "Test query for agents",
+            "research_results": {},
+            "analysis_results": {},
+            "final_report": "",
+            "agent_logs": [],
+            "current_agent": ""
+        }
+        
+        result = app.invoke(initial_state)
+        
+        # Verify all agents executed
+        agent_names = [log["agent"] for log in result["agent_logs"]]
+        assert "research_agent" in agent_names
+        assert "analysis_agent" in agent_names
+        assert "report_agent" in agent_names
+        
+        # Verify final report was generated
+        assert result["final_report"].strip() != ""
+        assert "Research & Analysis Report" in result["final_report"]
+    
+    def test_supervisor_worker_coordination(self):
+        """Test supervisor-worker pattern"""
+        app = create_supervisor_worker_system()
+        
+        initial_state = {
+            "user_request": "data analysis task",
+            "task_assignments": [],
+            "worker_results": {},
+            "supervisor_decision": "",
+            "final_output": "",
+            "coordination_log": []
+        }
+        
+        result = app.invoke(initial_state)
+        
+        # Verify supervisor made decision
+        assert result["supervisor_decision"] == "data_analysis_workflow"
+        
+        # Verify workers were assigned tasks
+        assert len(result["task_assignments"]) > 0
+        
+        # Verify coordination occurred
+        assert len(result["coordination_log"]) > 0
+    
+    def test_expert_network_consensus(self):
+        """Test expert network consensus building"""
+        app = create_expert_network_system()
+        
+        initial_state = {
+            "problem_statement": "We need to improve data security and analysis capabilities",
+            "required_expertise": ["data_science", "security"],
+            "expert_opinions": {},
+            "consensus_report": {},
+            "confidence_scores": {},
+            "expert_recommendations": []
+        }
+        
+        result = app.invoke(initial_state)
+        
+        # Verify experts provided opinions
+        assert len(result["expert_opinions"]) >= 2
+        assert "data_science_expert" in result["expert_opinions"]
+        assert "security_expert" in result["expert_opinions"]
+        
+        # Verify consensus was built
+        assert "consensus_report" in result
+        assert len(result["expert_recommendations"]) > 0
+    
+    @patch('datetime.datetime')
+    def test_agent_communication_timing(self, mock_datetime):
+        """Test agent communication with controlled timing"""
+        fixed_time = datetime(2024, 1, 15, 10, 0, 0)
+        mock_datetime.now.return_value = fixed_time
+        
+        # Test message creation
+        message = AgentMessage(
+            from_agent="test_agent_1",
+            to_agent="test_agent_2",
+            message_type="test_message",
+            content={"data": "test"},
+            timestamp=fixed_time.isoformat(),
+            priority=1
+        )
+        
+        assert message.timestamp == fixed_time.isoformat()
+        assert message.from_agent == "test_agent_1"
+        assert message.priority == 1
+    
+    def test_agent_message_priority_ordering(self):
+        """Test that messages are processed by priority"""
+        messages = [
+            AgentMessage("agent1", "agent2", "low_priority", {}, "2024-01-01T10:00:00", priority=3),
+            AgentMessage("agent1", "agent2", "high_priority", {}, "2024-01-01T10:01:00", priority=1),
+            AgentMessage("agent1", "agent2", "medium_priority", {}, "2024-01-01T10:02:00", priority=2)
+        ]
+        
+        # Sort by priority (lower number = higher priority)
+        sorted_messages = sorted(messages, key=lambda x: x.priority)
+        
+        assert sorted_messages[0].message_type == "high_priority"
+        assert sorted_messages[1].message_type == "medium_priority"
+        assert sorted_messages[2].message_type == "low_priority"
+
+# Performance testing for multi-agent systems
+class TestMultiAgentPerformance:
+    """Test multi-agent system performance"""
+    
+    def test_agent_execution_time(self):
+        """Test that agents execute within reasonable time"""
+        import time
+        
+        app = create_basic_multi_agent_system()
+        
+        initial_state = {
+            "user_query": "Performance test query",
+            "research_results": {},
+            "analysis_results": {},
+            "final_report": "",
+            "agent_logs": [],
+            "current_agent": ""
+        }
+        
+        start_time = time.time()
+        result = app.invoke(initial_state)
+        execution_time = time.time() - start_time
+        
+        # Should complete within reasonable time (adjust as needed)
+        assert execution_time < 5.0  # 5 seconds max
+        
+        # Verify all agents completed
+        assert len(result["agent_logs"]) == 3  # 3 agents should have executed
+    
+    def test_large_message_volume_handling(self):
+        """Test system with large volume of messages"""
+        
+        # Create many messages
+        messages = []
+        for i in range(100):
+            messages.append(AgentMessage(
+                f"agent_{i % 10}",  # 10 different agents
+                f"target_{(i + 1) % 10}",
+                f"message_{i}",
+                {"data": f"payload_{i}"},
+                f"2024-01-01T10:{i:02d}:00",
+                priority=i % 3 + 1  # Vary priorities
+            ))
+        
+        state = {
+            "user_task": "Large volume test",
+            "agent_messages": messages,
+            "agent_states": {},
+            "task_progress": {},
+            "final_result": ""
+        }
+        
+        # Test message broker can handle volume
+        result = message_broker(state)
+        
+        # Should have routing log entries
+        assert len(result["routing_log"]) > 0
+```
+
+### 10.6 Best Practices for Multi-Agent Systems
+
+#### Multi-Agent Design Principles
+
+1. **Clear Agent Responsibilities**: Each agent should have well-defined roles and capabilities
+2. **Efficient Communication**: Use message passing and shared state appropriately
+3. **Fault Tolerance**: Design agents to handle failures of other agents gracefully
+4. **Scalability**: Consider how the system scales with more agents
+5. **Coordination Overhead**: Balance coordination benefits with communication costs
+
+#### Common Multi-Agent Patterns
+
+```python
+"""
+Multi-Agent Pattern Reference Guide
+
+1. Sequential Chain:
+   Agent A → Agent B → Agent C → Result
+   
+2. Supervisor-Worker:
+   Supervisor → {Worker 1, Worker 2, Worker 3} → Coordinator
+   
+3. Expert Network:
+   Problem → {Expert 1, Expert 2, Expert N} → Consensus
+   
+4. Bidding System:
+   Task → Agents Bid → Winner Selected → Execution
+   
+5. Hierarchical:
+   Manager → Team Leads → Individual Agents
+   
+6. Peer-to-Peer:
+   Agents communicate directly without central coordination
+
+Choose patterns based on your coordination needs, scalability requirements, and fault tolerance needs.
+"""
+```
+
+---
+
+## 11. Advanced Patterns
+
+This section explores sophisticated LangGraph patterns for complex applications, including streaming, batching, dynamic graph construction, and advanced flow control mechanisms.
+
+### 11.1 Streaming and Real-time Processing
+
+#### Streaming Graph Execution
+
+```python
+from typing import TypedDict, AsyncIterator, Dict, Any, List
+import asyncio
+from langgraph.graph import StateGraph, START, END
+
+class StreamingState(TypedDict):
+    input_stream: List[str]
+    processed_items: List[Dict[str, Any]]
+    current_item: str
+    stream_position: int
+    batch_results: List[str]
+
+async def stream_processor_node(state: StreamingState) -> StreamingState:
+    """Process items from stream one at a time"""
+    
+    if state["stream_position"] >= len(state["input_stream"]):
+        return state  # No more items to process
+    
+    current_item = state["input_stream"][state["stream_position"]]
+    
+    # Simulate async processing
+    await asyncio.sleep(0.1)
+    
+    processed_item = {
+        "original": current_item,
+        "processed": current_item.upper(),
+        "timestamp": asyncio.get_event_loop().time(),
+        "position": state["stream_position"]
+    }
+    
+    return {
+        **state,
+        "current_item": current_item,
+        "processed_items": state["processed_items"] + [processed_item],
+        "stream_position": state["stream_position"] + 1
+    }
+
+def should_continue_streaming(state: StreamingState) -> str:
+    """Determine if more streaming is needed"""
+    if state["stream_position"] < len(state["input_stream"]):
+        return "continue"
+    else:
+        return "complete"
+
+async def create_streaming_graph():
+    """Create streaming processing graph"""
+    
+    graph = StateGraph(StreamingState)
+    
+    graph.add_node("stream_processor", stream_processor_node)
+    
+    graph.add_edge(START, "stream_processor")
+    graph.add_conditional_edge(
+        "stream_processor",
+        should_continue_streaming,
+        {
+            "continue": "stream_processor",  # Loop back for more items
+            "complete": END
+        }
+    )
+    
+    return graph.compile()
+
+# Real-time streaming example
+async def process_real_time_stream():
+    """Example of real-time stream processing"""
+    
+    app = await create_streaming_graph()
+    
+    # Simulate real-time data stream
+    stream_data = [f"item_{i}" for i in range(10)]
+    
+    initial_state = {
+        "input_stream": stream_data,
+        "processed_items": [],
+        "current_item": "",
+        "stream_position": 0,
+        "batch_results": []
+    }
+    
+    # Process stream
+    result = await app.ainvoke(initial_state)
+    
+    print(f"Processed {len(result['processed_items'])} items from stream")
+    for item in result['processed_items']:
+        print(f"  {item['original']} -> {item['processed']} at {item['timestamp']:.2f}")
+    
+    return result
+
+# Generator-based streaming
+async def streaming_generator(items: List[str]) -> AsyncIterator[Dict[str, Any]]:
+    """Generate streaming results"""
+    for i, item in enumerate(items):
+        await asyncio.sleep(0.05)  # Simulate processing time
+        yield {
+            "item": item,
+            "processed": item.upper(),
+            "index": i,
+            "timestamp": asyncio.get_event_loop().time()
+        }
+
+async def consume_streaming_results():
+    """Example of consuming streaming results"""
+    items = [f"stream_item_{i}" for i in range(5)]
+    
+    print("Processing stream:")
+    async for result in streaming_generator(items):
+        print(f"  Received: {result['item']} -> {result['processed']}")
+```
+
+#### Batch Processing Patterns
+
+```python
+from typing import TypedDict, List, Dict, Any
+from datetime import datetime
+import asyncio
+
+class BatchProcessingState(TypedDict):
+    input_data: List[str]
+    batch_size: int
+    current_batch: List[str]
+    processed_batches: List[Dict[str, Any]]
+    batch_index: int
+    total_items: int
+
+def batch_creator_node(state: BatchProcessingState) -> BatchProcessingState:
+    """Create batches from input data"""
+    
+    start_idx = state["batch_index"] * state["batch_size"]
+    end_idx = min(start_idx + state["batch_size"], len(state["input_data"]))
+    
+    if start_idx >= len(state["input_data"]):
+        return {**state, "current_batch": []}  # No more batches
+    
+    current_batch = state["input_data"][start_idx:end_idx]
+    
+    return {
+        **state,
+        "current_batch": current_batch
+    }
+
+async def batch_processor_node(state: BatchProcessingState) -> BatchProcessingState:
+    """Process a batch of items"""
+    
+    if not state["current_batch"]:
+        return state
+    
+    batch = state["current_batch"]
+    
+    # Process batch items in parallel
+    async def process_item(item: str) -> Dict[str, Any]:
+        await asyncio.sleep(0.01)  # Simulate async work
+        return {
+            "original": item,
+            "processed": item.upper(),
+            "length": len(item)
+        }
+    
+    # Process all items in batch concurrently
+    batch_tasks = [process_item(item) for item in batch]
+    processed_items = await asyncio.gather(*batch_tasks)
+    
+    batch_result = {
+        "batch_index": state["batch_index"],
+        "batch_size": len(batch),
+        "items": processed_items,
+        "processing_time": datetime.now().isoformat(),
+        "total_length": sum(item["length"] for item in processed_items)
+    }
+    
+    return {
+        **state,
+        "processed_batches": state["processed_batches"] + [batch_result],
+        "batch_index": state["batch_index"] + 1,
+        "current_batch": []
+    }
+
+def has_more_batches(state: BatchProcessingState) -> str:
+    """Check if there are more batches to process"""
+    total_batches = (len(state["input_data"]) + state["batch_size"] - 1) // state["batch_size"]
+    
+    if state["batch_index"] < total_batches:
+        return "more_batches"
+    else:
+        return "complete"
+
+async def create_batch_processing_graph():
+    """Create batch processing graph"""
+    
+    graph = StateGraph(BatchProcessingState)
+    
+    graph.add_node("batch_creator", batch_creator_node)
+    graph.add_node("batch_processor", batch_processor_node)
+    
+    graph.add_edge(START, "batch_creator")
+    graph.add_edge("batch_creator", "batch_processor")
+    
+    graph.add_conditional_edge(
+        "batch_processor",
+        has_more_batches,
+        {
+            "more_batches": "batch_creator",  # Create next batch
+            "complete": END
+        }
+    )
+    
+    return graph.compile()
+
+# Usage example
+async def run_batch_processing():
+    """Example of batch processing"""
+    
+    app = await create_batch_processing_graph()
+    
+    # Large dataset to process in batches
+    large_dataset = [f"data_item_{i:04d}" for i in range(100)]
+    
+    initial_state = {
+        "input_data": large_dataset,
+        "batch_size": 10,
+        "current_batch": [],
+        "processed_batches": [],
+        "batch_index": 0,
+        "total_items": len(large_dataset)
+    }
+    
+    result = await app.ainvoke(initial_state)
+    
+    print(f"Processed {len(result['processed_batches'])} batches")
+    for batch_result in result['processed_batches']:
+        print(f"  Batch {batch_result['batch_index']}: {batch_result['batch_size']} items, "
+              f"total length: {batch_result['total_length']}")
+    
+    return result
+```
+
+### 11.2 Dynamic Graph Construction
+
+#### Runtime Graph Modification
+
+```python
+from typing import TypedDict, Dict, Any, List, Callable
+from langgraph.graph import StateGraph, START, END
+
+class DynamicGraphState(TypedDict):
+    graph_config: Dict[str, Any]
+    available_nodes: Dict[str, Callable]
+    execution_plan: List[str]
+    current_step: int
+    step_results: Dict[str, Any]
+    graph_modified: bool
+
+def graph_planner_node(state: DynamicGraphState) -> DynamicGraphState:
+    """Plan graph structure based on configuration"""
+    
+    config = state["graph_config"]
+    task_type = config.get("task_type", "default")
+    complexity = config.get("complexity", "medium")
+    
+    # Determine execution plan based on configuration
+    if task_type == "data_processing":
+        if complexity == "simple":
+            plan = ["data_loader", "simple_processor", "output_formatter"]
+        elif complexity == "complex":
+            plan = ["data_loader", "validator", "complex_processor", "analyzer", "output_formatter"]
+        else:  # medium
+            plan = ["data_loader", "processor", "output_formatter"]
+    elif task_type == "analysis":
+        plan = ["data_collector", "statistical_analyzer", "report_generator"]
+    else:
+        plan = ["default_processor"]
+    
+    return {
+        **state,
+        "execution_plan": plan,
+        "current_step": 0
+    }
+
+def dynamic_executor_node(state: DynamicGraphState) -> DynamicGraphState:
+    """Execute current step in the dynamic plan"""
+    
+    plan = state["execution_plan"]
+    step_idx = state["current_step"]
+    
+    if step_idx >= len(plan):
+        return state  # No more steps
+    
+    current_node_name = plan[step_idx]
+    current_node_func = state["available_nodes"].get(current_node_name)
+    
+    if not current_node_func:
+        # Node not available, skip or handle error
+        result = {"error": f"Node {current_node_name} not available"}
+    else:
+        # Execute the node function
+        result = current_node_func(state)
+    
+    # Store step result
+    step_results = {**state["step_results"]}
+    step_results[current_node_name] = result
+    
+    return {
+        **state,
+        "step_results": step_results,
+        "current_step": step_idx + 1
+    }
+
+def has_more_steps(state: DynamicGraphState) -> str:
+    """Check if there are more steps to execute"""
+    if state["current_step"] < len(state["execution_plan"]):
+        return "continue"
+    else:
+        return "complete"
+
+# Available node functions
+def data_loader_func(state: DynamicGraphState) -> Dict[str, Any]:
+    """Load data step"""
+    return {
+        "step": "data_loading",
+        "data_loaded": True,
+        "records_count": 1000,
+        "status": "completed"
+    }
+
+def simple_processor_func(state: DynamicGraphState) -> Dict[str, Any]:
+    """Simple processing step"""
+    return {
+        "step": "simple_processing",
+        "processing_applied": "basic_transformation",
+        "status": "completed"
+    }
+
+def complex_processor_func(state: DynamicGraphState) -> Dict[str, Any]:
+    """Complex processing step"""
+    return {
+        "step": "complex_processing", 
+        "processing_applied": "advanced_transformation",
+        "algorithms_used": ["algorithm_a", "algorithm_b"],
+        "status": "completed"
+    }
+
+def validator_func(state: DynamicGraphState) -> Dict[str, Any]:
+    """Data validation step"""
+    return {
+        "step": "validation",
+        "validation_passed": True,
+        "errors_found": 0,
+        "status": "completed"
+    }
+
+def analyzer_func(state: DynamicGraphState) -> Dict[str, Any]:
+    """Analysis step"""
+    return {
+        "step": "analysis",
+        "insights_generated": 5,
+        "patterns_found": ["pattern_1", "pattern_2"],
+        "status": "completed"
+    }
+
+def output_formatter_func(state: DynamicGraphState) -> Dict[str, Any]:
+    """Output formatting step"""
+    return {
+        "step": "output_formatting",
+        "format": "json",
+        "output_ready": True,
+        "status": "completed"
+    }
+
+def create_dynamic_graph():
+    """Create dynamic graph that can modify itself at runtime"""
+    
+    available_nodes = {
+        "data_loader": data_loader_func,
+        "simple_processor": simple_processor_func,
+        "complex_processor": complex_processor_func,
+        "validator": validator_func,
+        "analyzer": analyzer_func,
+        "output_formatter": output_formatter_func,
+        "processor": simple_processor_func,  # Alias
+        "data_collector": data_loader_func,  # Alias
+        "statistical_analyzer": analyzer_func,  # Alias
+        "report_generator": output_formatter_func,  # Alias
+        "default_processor": simple_processor_func  # Alias
+    }
+    
+    graph = StateGraph(DynamicGraphState)
+    
+    graph.add_node("planner", graph_planner_node)
+    graph.add_node("executor", dynamic_executor_node)
+    
+    graph.add_edge(START, "planner")
+    graph.add_edge("planner", "executor")
+    
+    graph.add_conditional_edge(
+        "executor",
+        has_more_steps,
+        {
+            "continue": "executor",  # Loop back for next step
+            "complete": END
+        }
+    )
+    
+    return graph.compile(), available_nodes
+
+# Usage examples
+def run_dynamic_graph_examples():
+    """Examples of dynamic graph usage"""
+    
+    app, available_nodes = create_dynamic_graph()
+    
+    # Example 1: Simple data processing
+    simple_config = {
+        "task_type": "data_processing",
+        "complexity": "simple"
+    }
+    
+    simple_state = {
+        "graph_config": simple_config,
+        "available_nodes": available_nodes,
+        "execution_plan": [],
+        "current_step": 0,
+        "step_results": {},
+        "graph_modified": False
+    }
+    
+    result1 = app.invoke(simple_state)
+    print("Simple processing plan:", result1["execution_plan"])
+    print("Steps executed:", len(result1["step_results"]))
+    
+    # Example 2: Complex data processing
+    complex_config = {
+        "task_type": "data_processing",
+        "complexity": "complex"
+    }
+    
+    complex_state = {
+        "graph_config": complex_config,
+        "available_nodes": available_nodes,
+        "execution_plan": [],
+        "current_step": 0,
+        "step_results": {},
+        "graph_modified": False
+    }
+    
+    result2 = app.invoke(complex_state)
+    print("Complex processing plan:", result2["execution_plan"])
+    print("Steps executed:", len(result2["step_results"]))
+    
+    # Example 3: Analysis task
+    analysis_config = {
+        "task_type": "analysis",
+        "complexity": "medium"
+    }
+    
+    analysis_state = {
+        "graph_config": analysis_config,
+        "available_nodes": available_nodes,
+        "execution_plan": [],
+        "current_step": 0,
+        "step_results": {},
+        "graph_modified": False
+    }
+    
+    result3 = app.invoke(analysis_state)
+    print("Analysis plan:", result3["execution_plan"])
+    print("Steps executed:", len(result3["step_results"]))
+    
+    return [result1, result2, result3]
+```
+
+### 11.3 Advanced Flow Control
+
+#### Circuit Breaker Pattern
+
+```python
+from typing import TypedDict, Dict, Any
+import time
+from enum import Enum
+
+class CircuitState(Enum):
+    CLOSED = "closed"      # Normal operation
+    OPEN = "open"          # Failing, not allowing calls
+    HALF_OPEN = "half_open"  # Testing if service recovered
+
+class CircuitBreakerState(TypedDict):
+    service_name: str
+    circuit_state: str
+    failure_count: int
+    failure_threshold: int
+    success_count: int
+    last_failure_time: float
+    timeout_duration: float
+    half_open_max_calls: int
+    half_open_calls: int
+    service_response: Dict[str, Any]
+
+def circuit_breaker_node(state: CircuitBreakerState) -> CircuitBreakerState:
+    """Circuit breaker logic for service calls"""
+    
+    current_time = time.time()
+    circuit_state = state["circuit_state"]
+    
+    # Check if circuit should transition from OPEN to HALF_OPEN
+    if (circuit_state == CircuitState.OPEN.value and 
+        current_time - state["last_failure_time"] > state["timeout_duration"]):
+        circuit_state = CircuitState.HALF_OPEN.value
+        return {
+            **state,
+            "circuit_state": circuit_state,
+            "half_open_calls": 0
+        }
+    
+    # If circuit is OPEN, don't make the call
+    if circuit_state == CircuitState.OPEN.value:
+        return {
+            **state,
+            "service_response": {
+                "status": "circuit_open",
+                "message": "Service calls blocked due to circuit breaker",
+                "error": True
+            }
+        }
+    
+    return state
+
+def service_call_node(state: CircuitBreakerState) -> CircuitBreakerState:
+    """Make service call with circuit breaker protection"""
+    
+    if state["circuit_state"] == CircuitState.OPEN.value:
+        return state  # Already handled by circuit breaker
+    
+    # Simulate service call
+    import random
+    call_successful = random.random() > 0.3  # 70% success rate
+    
+    if call_successful:
+        # Success - update circuit breaker state
+        success_count = state["success_count"] + 1
+        
+        # If we're in HALF_OPEN state, check if we should close the circuit
+        if state["circuit_state"] == CircuitState.HALF_OPEN.value:
+            if success_count >= 2:  # Require 2 successes to close circuit
+                circuit_state = CircuitState.CLOSED.value
+                failure_count = 0
+            else:
+                circuit_state = state["circuit_state"]
+                failure_count = state["failure_count"]
+        else:
+            circuit_state = CircuitState.CLOSED.value
+            failure_count = max(0, state["failure_count"] - 1)  # Reduce failure count on success
+        
+        return {
+            **state,
+            "circuit_state": circuit_state,
+            "failure_count": failure_count,
+            "success_count": success_count,
+            "service_response": {
+                "status": "success",
+                "data": f"Service call successful for {state['service_name']}",
+                "timestamp": time.time(),
+                "error": False
+            }
+        }
+    
+    else:
+        # Failure - update circuit breaker state
+        failure_count = state["failure_count"] + 1
+        last_failure_time = time.time()
+        
+        # Check if we should open the circuit
+        if failure_count >= state["failure_threshold"]:
+            circuit_state = CircuitState.OPEN.value
+        elif state["circuit_state"] == CircuitState.HALF_OPEN.value:
+            circuit_state = CircuitState.OPEN.value  # Go back to OPEN on failure
+        else:
+            circuit_state = state["circuit_state"]
+        
+        return {
+            **state,
+            "circuit_state": circuit_state,
+            "failure_count": failure_count,
+            "last_failure_time": last_failure_time,
+            "service_response": {
+                "status": "failure",
+                "message": f"Service call failed for {state['service_name']}",
+                "error": True,
+                "failure_count": failure_count
+            }
+        }
+
+def create_circuit_breaker_graph():
+    """Create circuit breaker protected service call graph"""
+    
+    graph = StateGraph(CircuitBreakerState)
+    
+    graph.add_node("circuit_check", circuit_breaker_node)
+    graph.add_node("service_call", service_call_node)
+    
+    graph.add_edge(START, "circuit_check")
+    graph.add_edge("circuit_check", "service_call")
+    graph.add_edge("service_call", END)
+    
+    return graph.compile()
+
+# Usage example
+def test_circuit_breaker():
+    """Test circuit breaker pattern"""
+    
+    app = create_circuit_breaker_graph()
+    
+    initial_state = {
+        "service_name": "external_api",
+        "circuit_state": CircuitState.CLOSED.value,
+        "failure_count": 0,
+        "failure_threshold": 3,
+        "success_count": 0,
+        "last_failure_time": 0.0,
+        "timeout_duration": 5.0,  # 5 seconds
+        "half_open_max_calls": 2,
+        "half_open_calls": 0,
+        "service_response": {}
+    }
+    
+    # Make multiple calls to test circuit breaker behavior
+    for i in range(10):
+        result = app.invoke(initial_state)
+        
+        print(f"Call {i+1}: Circuit={result['circuit_state']}, "
+              f"Failures={result['failure_count']}, "
+              f"Response={result['service_response']['status']}")
+        
+        # Update state for next call
+        initial_state = {
+            **result,
+            "service_response": {}  # Reset response for next call
+        }
+        
+        time.sleep(0.1)  # Small delay between calls
+    
+    return result
+```
+
+#### Retry with Exponential Backoff
+
+```python
+import asyncio
+import random
+from typing import TypedDict, Dict, Any
+
+class RetryState(TypedDict):
+    operation_name: str
+    attempt_count: int
+    max_attempts: int
+    base_delay: float
+    max_delay: float
+    backoff_multiplier: float
+    jitter: bool
+    last_error: str
+    operation_result: Dict[str, Any]
+    success: bool
+
+async def retryable_operation_node(state: RetryState) -> RetryState:
+    """Perform operation that might fail and need retry"""
+    
+    attempt = state["attempt_count"] + 1
+    
+    # Simulate operation that might fail
+    # Increasing success probability with each attempt
+    success_probability = min(0.2 + (attempt * 0.2), 0.9)
+    operation_successful = random.random() < success_probability
+    
+    if operation_successful:
+        return {
+            **state,
+            "attempt_count": attempt,
+            "success": True,
+            "operation_result": {
+                "status": "success",
+                "data": f"Operation {state['operation_name']} succeeded on attempt {attempt}",
+                "attempt_count": attempt
+            },
+            "last_error": ""
+        }
+    else:
+        error_msg = f"Operation {state['operation_name']} failed on attempt {attempt}"
+        return {
+            **state,
+            "attempt_count": attempt,
+            "success": False,
+            "last_error": error_msg,
+            "operation_result": {
+                "status": "failure",
+                "error": error_msg,
+                "attempt_count": attempt
+            }
+        }
+
+async def retry_delay_node(state: RetryState) -> RetryState:
+    """Calculate and apply retry delay with exponential backoff"""
+    
+    if state["success"] or state["attempt_count"] >= state["max_attempts"]:
+        return state  # No delay needed
+    
+    # Calculate delay with exponential backoff
+    delay = min(
+        state["base_delay"] * (state["backoff_multiplier"] ** (state["attempt_count"] - 1)),
+        state["max_delay"]
+    )
+    
+    # Add jitter if enabled
+    if state["jitter"]:
+        jitter_range = delay * 0.1  # 10% jitter
+        delay += random.uniform(-jitter_range, jitter_range)
+    
+    # Apply delay
+    await asyncio.sleep(delay)
+    
+    return {
+        **state,
+        "operation_result": {
+            **state["operation_result"],
+            "delay_applied": delay,
+            "next_attempt_in": delay
+        }
+    }
+
+def should_retry(state: RetryState) -> str:
+    """Determine if operation should be retried"""
+    
+    if state["success"]:
+        return "success"
+    elif state["attempt_count"] >= state["max_attempts"]:
+        return "max_attempts_reached"
+    else:
+        return "retry"
+
+async def create_retry_graph():
+    """Create retry graph with exponential backoff"""
+    
+    graph = StateGraph(RetryState)
+    
+    graph.add_node("operation", retryable_operation_node)
+    graph.add_node("delay", retry_delay_node)
+    
+    graph.add_edge(START, "operation")
+    graph.add_edge("operation", "delay")
+    
+    graph.add_conditional_edge(
+        "delay",
+        should_retry,
+        {
+            "success": END,
+            "retry": "operation",  # Try again
+            "max_attempts_reached": END
+        }
+    )
+    
+    return graph.compile()
+
+# Usage example
+async def test_retry_pattern():
+    """Test retry pattern with exponential backoff"""
+    
+    app = await create_retry_graph()
+    
+    initial_state = {
+        "operation_name": "critical_api_call",
+        "attempt_count": 0,
+        "max_attempts": 5,
+        "base_delay": 1.0,  # Start with 1 second
+        "max_delay": 16.0,  # Cap at 16 seconds
+        "backoff_multiplier": 2.0,  # Double delay each time
+        "jitter": True,
+        "last_error": "",
+        "operation_result": {},
+        "success": False
+    }
+    
+    print("Starting retry operation...")
+    start_time = asyncio.get_event_loop().time()
+    
+    result = await app.ainvoke(initial_state)
+    
+    end_time = asyncio.get_event_loop().time()
+    total_time = end_time - start_time
+    
+    print(f"Operation completed in {total_time:.2f} seconds")
+    print(f"Success: {result['success']}")
+    print(f"Attempts: {result['attempt_count']}")
+    print(f"Final result: {result['operation_result']}")
+    
+    return result
+```
+
+### 11.4 Advanced State Transformation Patterns
+
+#### State Aggregation and Reduction
+
+```python
+from typing import TypedDict, List, Dict, Any, Callable
+from functools import reduce
+
+class AggregationState(TypedDict):
+    data_sources: List[Dict[str, Any]]
+    aggregation_rules: Dict[str, str]
+    intermediate_results: Dict[str, Any]
+    final_aggregation: Dict[str, Any]
+    processing_metadata: Dict[str, Any]
+
+def data_collector_node(state: AggregationState) -> AggregationState:
+    """Collect data from multiple sources"""
+    
+    # Simulate collecting from multiple data sources
+    collected_data = []
+    
+    for i, source in enumerate(state["data_sources"]):
+        source_data = {
+            "source_id": source.get("id", f"source_{i}"),
+            "data": source.get("data", []),
+            "timestamp": source.get("timestamp", time.time()),
+            "metadata": source.get("metadata", {})
+        }
+        collected_data.append(source_data)
+    
+    return {
+        **state,
+        "intermediate_results": {
+            **state["intermediate_results"],
+            "collected_data": collected_data,
+            "collection_completed": True
+        }
+    }
+
+def data_transformer_node(state: AggregationState) -> AggregationState:
+    """Transform data before aggregation"""
+    
+    collected_data = state["intermediate_results"].get("collected_data", [])
+    
+    transformed_data = []
+    for source_data in collected_data:
+        # Apply transformations based on source type
+        source_type = source_data.get("metadata", {}).get("type", "default")
+        
+        if source_type == "numeric":
+            transformed = [float(x) for x in source_data["data"] if isinstance(x, (int, float, str)) and str(x).replace('.','').isdigit()]
+        elif source_type == "text":
+            transformed = [str(x).lower().strip() for x in source_data["data"]]
+        else:
+            transformed = source_data["data"]
+        
+        transformed_data.append({
+            **source_data,
+            "transformed_data": transformed
+        })
+    
+    return {
+        **state,
+        "intermediate_results": {
+            **state["intermediate_results"],
+            "transformed_data": transformed_data,
+            "transformation_completed": True
+        }
+    }
+
+def aggregator_node(state: AggregationState) -> AggregationState:
+    """Aggregate transformed data according to rules"""
+    
+    transformed_data = state["intermediate_results"].get("transformed_data", [])
+    aggregation_rules = state["aggregation_rules"]
+    
+    aggregations = {}
+    
+    for rule_name, rule_type in aggregation_rules.items():
+        if rule_type == "sum":
+            # Sum all numeric data
+            all_numeric = []
+            for source in transformed_data:
+                if isinstance(source.get("transformed_data"), list):
+                    all_numeric.extend([x for x in source["transformed_data"] if isinstance(x, (int, float))])
+            aggregations[rule_name] = sum(all_numeric)
+            
+        elif rule_type == "count":
+            # Count all items
+            total_count = 0
+            for source in transformed_data:
+                if isinstance(source.get("transformed_data"), list):
+                    total_count += len(source["transformed_data"])
+            aggregations[rule_name] = total_count
+            
+        elif rule_type == "average":
+            # Average of all numeric data
+            all_numeric = []
+            for source in transformed_data:
+                if isinstance(source.get("transformed_data"), list):
+                    all_numeric.extend([x for x in source["transformed_data"] if isinstance(x, (int, float))])
+            aggregations[rule_name] = sum(all_numeric) / len(all_numeric) if all_numeric else 0
+            
+        elif rule_type == "concat":
+            # Concatenate all text data
+            all_text = []
+            for source in transformed_data:
+                if isinstance(source.get("transformed_data"), list):
+                    all_text.extend([str(x) for x in source["transformed_data"]])
+            aggregations[rule_name] = " ".join(all_text)
+    
+    # Metadata about aggregation process
+    processing_metadata = {
+        "sources_processed": len(transformed_data),
+        "rules_applied": len(aggregation_rules),
+        "aggregation_timestamp": time.time(),
+        "data_points_processed": sum(len(s.get("transformed_data", [])) for s in transformed_data)
+    }
+    
+    return {
+        **state,
+        "final_aggregation": aggregations,
+        "processing_metadata": processing_metadata
+    }
+
+def create_aggregation_graph():
+    """Create data aggregation graph"""
+    
+    graph = StateGraph(AggregationState)
+    
+    graph.add_node("collector", data_collector_node)
+    graph.add_node("transformer", data_transformer_node)
+    graph.add_node("aggregator", aggregator_node)
+    
+    graph.add_edge(START, "collector")
+    graph.add_edge("collector", "transformer")
+    graph.add_edge("transformer", "aggregator")
+    graph.add_edge("aggregator", END)
+    
+    return graph.compile()
+
+# Usage example
+def test_aggregation_pattern():
+    """Test data aggregation pattern"""
+    
+    app = create_aggregation_graph()
+    
+    # Sample data sources
+    data_sources = [
+        {
+            "id": "source_1",
+            "data": [10, 20, 30, 40],
+            "metadata": {"type": "numeric", "source": "database_a"}
+        },
+        {
+            "id": "source_2", 
+            "data": [5, 15, 25],
+            "metadata": {"type": "numeric", "source": "database_b"}
+        },
+        {
+            "id": "source_3",
+            "data": ["hello", "world", "test"],
+            "metadata": {"type": "text", "source": "text_api"}
+        }
+    ]
+    
+    # Aggregation rules
+    aggregation_rules = {
+        "total_sum": "sum",
+        "item_count": "count", 
+        "average_value": "average",
+        "combined_text": "concat"
+    }
+    
+    initial_state = {
+        "data_sources": data_sources,
+        "aggregation_rules": aggregation_rules,
+        "intermediate_results": {},
+        "final_aggregation": {},
+        "processing_metadata": {}
+    }
+    
+    result = app.invoke(initial_state)
+    
+    print("Aggregation Results:")
+    for rule, value in result["final_aggregation"].items():
+        print(f"  {rule}: {value}")
+    
+    print("\nProcessing Metadata:")
+    for key, value in result["processing_metadata"].items():
+        print(f"  {key}: {value}")
+    
+    return result
+```
+
+### 11.5 Testing Advanced Patterns
+
+#### Advanced Pattern Testing
+
+```python
+import pytest
+import asyncio
+from unittest.mock import patch, AsyncMock
+
+class TestAdvancedPatterns:
+    """Test advanced LangGraph patterns"""
+    
+    @pytest.mark.asyncio
+    async def test_streaming_processing(self):
+        """Test streaming graph execution"""
+        
+        app = await create_streaming_graph()
+        
+        test_stream = ["item1", "item2", "item3"]
+        initial_state = {
+            "input_stream": test_stream,
+            "processed_items": [],
+            "current_item": "",
+            "stream_position": 0,
+            "batch_results": []
+        }
+        
+        result = await app.ainvoke(initial_state)
+        
+        # Verify all items were processed
+        assert len(result["processed_items"]) == len(test_stream)
+        assert result["stream_position"] == len(test_stream)
+        
+        # Verify processing occurred
+        for i, item in enumerate(result["processed_items"]):
+            assert item["original"] == f"item{i+1}"
+            assert item["processed"] == f"ITEM{i+1}"
+    
+    @pytest.mark.asyncio
+    async def test_batch_processing(self):
+        """Test batch processing pattern"""
+        
+        app = await create_batch_processing_graph()
+        
+        # Test data that should create multiple batches
+        test_data = [f"item_{i}" for i in range(15)]
+        batch_size = 5
+        
+        initial_state = {
+            "input_data": test_data,
+            "batch_size": batch_size,
+            "current_batch": [],
+            "processed_batches": [],
+            "batch_index": 0,
+            "total_items": len(test_data)
+        }
+        
+        result = await app.ainvoke(initial_state)
+        
+        # Should create 3 batches (15 items / 5 per batch)
+        assert len(result["processed_batches"]) == 3
+        
+        # Check batch sizes
+        assert result["processed_batches"][0]["batch_size"] == 5
+        assert result["processed_batches"][1]["batch_size"] == 5
+        assert result["processed_batches"][2]["batch_size"] == 5
+        
+        # Verify all items processed
+        total_processed = sum(batch["batch_size"] for batch in result["processed_batches"])
+        assert total_processed == len(test_data)
+    
+    def test_dynamic_graph_construction(self):
+        """Test dynamic graph construction"""
+        
+        app, available_nodes = create_dynamic_graph()
+        
+        # Test different configurations
+        configs = [
+            {"task_type": "data_processing", "complexity": "simple"},
+            {"task_type": "data_processing", "complexity": "complex"},
+            {"task_type": "analysis", "complexity": "medium"}
+        ]
+        
+        for config in configs:
+            state = {
+                "graph_config": config,
+                "available_nodes": available_nodes,
+                "execution_plan": [],
+                "current_step": 0,
+                "step_results": {},
+                "graph_modified": False
+            }
+            
+            result = app.invoke(state)
+            
+            # Verify plan was created
+            assert len(result["execution_plan"]) > 0
+            
+            # Verify all steps executed
+            assert len(result["step_results"]) == len(result["execution_plan"])
+            
+            # Verify specific plans for known configurations
+            if config["task_type"] == "data_processing" and config["complexity"] == "simple":
+                expected_plan = ["data_loader", "simple_processor", "output_formatter"]
+                assert result["execution_plan"] == expected_plan
+    
+    def test_circuit_breaker_pattern(self):
+        """Test circuit breaker pattern"""
+        
+        app = create_circuit_breaker_graph()
+        
+        initial_state = {
+            "service_name": "test_service",
+            "circuit_state": "closed",
+            "failure_count": 0,
+            "failure_threshold": 3,
+            "success_count": 0,
+            "last_failure_time": 0.0,
+            "timeout_duration": 1.0,
+            "half_open_max_calls": 2,
+            "half_open_calls": 0,
+            "service_response": {}
+        }
+        
+        # Mock the service call to always fail
+        with patch('random.random', return_value=0.9):  # Force failure (> 0.3)
+            
+            # Make calls until circuit opens
+            state = initial_state.copy()
+            for i in range(5):
+                result = app.invoke(state)
+                state = {**result, "service_response": {}}  # Reset response
+                
+                if result["circuit_state"] == "open":
+                    break
+            
+            # Circuit should be open after threshold failures
+            assert result["circuit_state"] == "open"
+            assert result["failure_count"] >= initial_state["failure_threshold"]
+    
+    @pytest.mark.asyncio
+    async def test_retry_with_backoff(self):
+        """Test retry pattern with exponential backoff"""
+        
+        app = await create_retry_graph()
+        
+        initial_state = {
+            "operation_name": "test_operation",
+            "attempt_count": 0,
+            "max_attempts": 3,
+            "base_delay": 0.1,  # Short delay for testing
+            "max_delay": 1.0,
+            "backoff_multiplier": 2.0,
+            "jitter": False,  # Disable for predictable testing
+            "last_error": "",
+            "operation_result": {},
+            "success": False
+        }
+        
+        # Mock operation to fail first 2 attempts, succeed on 3rd
+        call_count = 0
+        def mock_random():
+            nonlocal call_count
+            call_count += 1
+            return 0.1 if call_count >= 3 else 0.9  # Success on 3rd call
+        
+        with patch('random.random', side_effect=mock_random):
+            start_time = asyncio.get_event_loop().time()
+            result = await app.ainvoke(initial_state)
+            end_time = asyncio.get_event_loop().time()
+            
+            # Should eventually succeed
+            assert result["success"] == True
+            assert result["attempt_count"] == 3
+            
+            # Should have taken some time due to delays
+            assert end_time - start_time >= 0.3  # At least sum of delays (0.1 + 0.2)
+    
+    def test_data_aggregation_pattern(self):
+        """Test data aggregation pattern"""
+        
+        app = create_aggregation_graph()
+        
+        data_sources = [
+            {"id": "source1", "data": [1, 2, 3], "metadata": {"type": "numeric"}},
+            {"id": "source2", "data": [4, 5], "metadata": {"type": "numeric"}},
+            {"id": "source3", "data": ["a", "b"], "metadata": {"type": "text"}}
+        ]
+        
+        aggregation_rules = {
+            "total": "sum",
+            "count": "count",
+            "average": "average"
+        }
+        
+        initial_state = {
+            "data_sources": data_sources,
+            "aggregation_rules": aggregation_rules,
+            "intermediate_results": {},
+            "final_aggregation": {},
+            "processing_metadata": {}
+        }
+        
+        result = app.invoke(initial_state)
+        
+        # Verify aggregations
+        assert result["final_aggregation"]["total"] == 15  # 1+2+3+4+5
+        assert result["final_aggregation"]["count"] == 7   # 5 numbers + 2 text items
+        assert result["final_aggregation"]["average"] == 3.0  # (1+2+3+4+5)/5
+        
+        # Verify metadata
+        assert result["processing_metadata"]["sources_processed"] == 3
+        assert result["processing_metadata"]["rules_applied"] == 3
+
+# Performance benchmarks
+class TestAdvancedPatternPerformance:
+    """Performance tests for advanced patterns"""
+    
+    @pytest.mark.asyncio
+    async def test_streaming_performance(self):
+        """Test streaming performance with large dataset"""
+        
+        app = await create_streaming_graph()
+        
+        # Large dataset
+        large_stream = [f"item_{i}" for i in range(100)]
+        
+        initial_state = {
+            "input_stream": large_stream,
+            "processed_items": [],
+            "current_item": "",
+            "stream_position": 0,
+            "batch_results": []
+        }
+        
+        start_time = asyncio.get_event_loop().time()
+        result = await app.ainvoke(initial_state)
+        end_time = asyncio.get_event_loop().time()
+        
+        processing_time = end_time - start_time
+        
+        # Should process all items
+        assert len(result["processed_items"]) == 100
+        
+        # Should complete in reasonable time (adjust threshold as needed)
+        assert processing_time < 20.0  # 20 seconds max for 100 items
+        
+        # Calculate throughput
+        throughput = len(large_stream) / processing_time
+        print(f"Streaming throughput: {throughput:.2f} items/second")
+        
+        assert throughput > 5.0  # At least 5 items per second
+```
+
+### 11.6 Best Practices for Advanced Patterns
+
+#### Advanced Pattern Guidelines
+
+```python
+"""
+Advanced LangGraph Pattern Best Practices
+
+1. **Streaming Patterns**:
+   - Use async/await for I/O bound streaming operations
+   - Implement backpressure mechanisms for high-volume streams
+   - Consider memory usage with large streams
+   - Add monitoring and metrics for stream processing
+
+2. **Batch Processing**:
+   - Choose optimal batch sizes based on memory and processing constraints
+   - Implement parallel processing within batches when possible
+   - Handle partial batch failures gracefully
+   - Monitor batch processing times and throughput
+
+3. **Dynamic Graphs**:
+   - Validate dynamic configurations before graph construction
+   - Cache compiled graphs when possible to avoid overhead
+   - Implement fallback strategies for missing nodes
+   - Log graph construction decisions for debugging
+
+4. **Circuit Breakers**:
+   - Set appropriate failure thresholds based on service SLAs
+   - Implement proper timeout and recovery mechanisms
+   - Monitor circuit breaker state changes
+   - Provide meaningful error messages when circuits are open
+
+5. **Retry Patterns**:
+   - Use exponential backoff to avoid overwhelming failing services
+   - Add jitter to prevent thundering herd problems
+   - Set maximum retry limits to prevent infinite loops
+   - Log retry attempts for monitoring and debugging
+
+6. **State Transformation**:
+   - Keep transformation logic pure and testable
+   - Validate data types and formats during transformation
+   - Implement efficient aggregation algorithms for large datasets
+   - Consider memory usage during aggregation operations
+
+7. **Performance Considerations**:
+   - Profile advanced patterns under realistic load conditions
+   - Monitor memory usage, especially with streaming and aggregation
+   - Implement appropriate caching strategies
+   - Use async patterns for I/O bound operations
+"""
+```
+
+---
+
+## 12. Real-World Project Structure
+
+This section provides comprehensive guidance on structuring LangGraph projects for production environments, covering project organization, configuration management, deployment strategies, and scalability patterns.
+
+### 12.1 Production Project Organization
+
+#### Enterprise-Grade Directory Structure
+
+```
+langgraph-application/
+├── README.md
+├── pyproject.toml
+├── requirements.txt
+├── .env.example
+├── .gitignore
+├── .dockerignore
+├── Dockerfile
+├── docker-compose.yml
+├── .github/
+│   └── workflows/
+│       ├── ci.yml
+│       ├── deploy.yml
+│       └── security-scan.yml
+├── scripts/
+│   ├── setup.sh
+│   ├── run-tests.sh
+│   ├── build.sh
+│   └── deploy.sh
+├── src/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── config/
+│   │   ├── __init__.py
+│   │   ├── settings.py
+│   │   ├── logging.py
+│   │   └── database.py
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── graphs/
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py
+│   │   │   ├── processing_graph.py
+│   │   │   ├── analysis_graph.py
+│   │   │   └── multi_agent_graph.py
+│   │   ├── nodes/
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py
+│   │   │   ├── processing_nodes.py
+│   │   │   ├── analysis_nodes.py
+│   │   │   ├── agent_nodes.py
+│   │   │   └── external_service_nodes.py
+│   │   ├── state/
+│   │   │   ├── __init__.py
+│   │   │   ├── base.py
+│   │   │   ├── processing_state.py
+│   │   │   ├── analysis_state.py
+│   │   │   └── agent_state.py
+│   │   └── utils/
+│   │       ├── __init__.py
+│   │       ├── validators.py
+│   │       ├── transformers.py
+│   │       ├── helpers.py
+│   │       └── exceptions.py
+│   ├── services/
+│   │   ├── __init__.py
+│   │   ├── database.py
+│   │   ├── cache.py
+│   │   ├── external_apis.py
+│   │   ├── file_storage.py
+│   │   └── messaging.py
+│   ├── api/
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   ├── routes/
+│   │   │   ├── __init__.py
+│   │   │   ├── health.py
+│   │   │   ├── processing.py
+│   │   │   ├── analysis.py
+│   │   │   └── admin.py
+│   │   ├── middleware/
+│   │   │   ├── __init__.py
+│   │   │   ├── auth.py
+│   │   │   ├── logging.py
+│   │   │   ├── rate_limiting.py
+│   │   │   └── error_handling.py
+│   │   └── models/
+│   │       ├── __init__.py
+│   │       ├── requests.py
+│   │       ├── responses.py
+│   │       └── schemas.py
+│   ├── cli/
+│   │   ├── __init__.py
+│   │   ├── main.py
+│   │   ├── commands/
+│   │   │   ├── __init__.py
+│   │   │   ├── process.py
+│   │   │   ├── analyze.py
+│   │   │   └── admin.py
+│   │   └── utils.py
+│   └── monitoring/
+│       ├── __init__.py
+│       ├── metrics.py
+│       ├── health_checks.py
+│       ├── tracing.py
+│       └── alerting.py
+├── tests/
+│   ├── __init__.py
+│   ├── conftest.py
+│   ├── unit/
+│   │   ├── __init__.py
+│   │   ├── core/
+│   │   │   ├── test_graphs.py
+│   │   │   ├── test_nodes.py
+│   │   │   └── test_state.py
+│   │   ├── services/
+│   │   │   └── test_services.py
+│   │   └── api/
+│   │       └── test_routes.py
+│   ├── integration/
+│   │   ├── __init__.py
+│   │   ├── test_graph_flows.py
+│   │   ├── test_api_integration.py
+│   │   └── test_database_integration.py
+│   ├── e2e/
+│   │   ├── __init__.py
+│   │   ├── test_complete_workflows.py
+│   │   └── test_user_scenarios.py
+│   ├── performance/
+│   │   ├── __init__.py
+│   │   ├── test_load.py
+│   │   ├── test_stress.py
+│   │   └── test_benchmarks.py
+│   └── fixtures/
+│       ├── __init__.py
+│       ├── sample_data.py
+│       └── mock_services.py
+├── docs/
+│   ├── README.md
+│   ├── api/
+│   │   ├── openapi.yaml
+│   │   └── endpoints.md
+│   ├── deployment/
+│   │   ├── local.md
+│   │   ├── docker.md
+│   │   ├── kubernetes.md
+│   │   └── cloud.md
+│   ├── architecture/
+│   │   ├── overview.md
+│   │   ├── graphs.md
+│   │   ├── nodes.md
+│   │   └── state.md
+│   └── guides/
+│       ├── getting-started.md
+│       ├── configuration.md
+│       ├── monitoring.md
+│       └── troubleshooting.md
+├── config/
+│   ├── development.yaml
+│   ├── testing.yaml
+│   ├── staging.yaml
+│   └── production.yaml
+├── deployment/
+│   ├── docker/
+│   │   ├── Dockerfile.prod
+│   │   ├── Dockerfile.dev
+│   │   └── docker-compose.prod.yml
+│   ├── kubernetes/
+│   │   ├── namespace.yaml
+│   │   ├── deployment.yaml
+│   │   ├── service.yaml
+│   │   ├── ingress.yaml
+│   │   ├── configmap.yaml
+│   │   └── secrets.yaml
+│   ├── terraform/
+│   │   ├── main.tf
+│   │   ├── variables.tf
+│   │   ├── outputs.tf
+│   │   └── modules/
+│   │       ├── vpc/
+│   │       ├── database/
+│   │       └── application/
+│   └── ansible/
+│       ├── playbook.yml
+│       ├── inventory/
+│       └── roles/
+├── monitoring/
+│   ├── prometheus/
+│   │   └── rules.yml
+│   ├── grafana/
+│   │   └── dashboards/
+│   └── alerts/
+│       └── alertmanager.yml
+└── data/
+    ├── migrations/
+    ├── seeds/
+    └── samples/
+```
+
+#### Core Module Implementation
+
+```python
+# src/core/graphs/base.py
+from abc import ABC, abstractmethod
+from typing import TypedDict, Dict, Any, Optional
+from langgraph.graph import StateGraph
+from langgraph.checkpoint.base import Checkpointer
+
+class BaseGraph(ABC):
+    """Base class for all LangGraph implementations"""
+    
+    def __init__(self, config: Dict[str, Any], checkpointer: Optional[Checkpointer] = None):
+        self.config = config
+        self.checkpointer = checkpointer
+        self._graph = None
+        self._compiled_graph = None
+    
+    @abstractmethod
+    def define_state(self) -> TypedDict:
+        """Define the state schema for this graph"""
+        pass
+    
+    @abstractmethod
+    def build_graph(self) -> StateGraph:
+        """Build the graph structure"""
+        pass
+    
+    def compile(self):
+        """Compile the graph for execution"""
+        if self._compiled_graph is None:
+            self._graph = self.build_graph()
+            self._compiled_graph = self._graph.compile(checkpointer=self.checkpointer)
+        return self._compiled_graph
+    
+    def invoke(self, initial_state: Dict[str, Any], config: Optional[Dict[str, Any]] = None):
+        """Execute the graph with given initial state"""
+        compiled_graph = self.compile()
+        return compiled_graph.invoke(initial_state, config=config)
+    
+    async def ainvoke(self, initial_state: Dict[str, Any], config: Optional[Dict[str, Any]] = None):
+        """Async execution of the graph"""
+        compiled_graph = self.compile()
+        return await compiled_graph.ainvoke(initial_state, config=config)
+```
+
+```python
+# src/core/nodes/base.py
+from abc import ABC, abstractmethod
+from typing import TypedDict, Dict, Any
+from dataclasses import dataclass
+import logging
+from datetime import datetime
+
+@dataclass
+class NodeConfig:
+    """Configuration for nodes"""
+    name: str
+    enabled: bool = True
+    timeout_seconds: int = 30
+    retry_count: int = 3
+    log_level: str = "INFO"
+    
+class BaseNode(ABC):
+    """Base class for all nodes"""
+    
+    def __init__(self, config: NodeConfig):
+        self.config = config
+        self.logger = logging.getLogger(f"node.{config.name}")
+        self.logger.setLevel(getattr(logging, config.log_level.upper()))
+    
+    @abstractmethod
+    def execute(self, state: TypedDict) -> TypedDict:
+        """Main execution logic for the node"""
+        pass
+    
+    def pre_execute(self, state: TypedDict) -> Dict[str, Any]:
+        """Pre-execution hook"""
+        return {
+            "node_name": self.config.name,
+            "execution_start": datetime.now().isoformat(),
+            "input_keys": list(state.keys())
+        }
+    
+    def post_execute(self, state: TypedDict, result: TypedDict, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """Post-execution hook"""
+        metadata.update({
+            "execution_end": datetime.now().isoformat(),
+            "output_keys": list(result.keys()),
+            "success": True
+        })
+        return metadata
+    
+    def __call__(self, state: TypedDict) -> TypedDict:
+        """Main entry point with error handling and logging"""
+        if not self.config.enabled:
+            self.logger.info(f"Node {self.config.name} is disabled, skipping")
+            return state
+        
+        metadata = self.pre_execute(state)
+        
+        try:
+            self.logger.info(f"Executing node: {self.config.name}")
+            result = self.execute(state)
+            
+            metadata = self.post_execute(state, result, metadata)
+            self.logger.info(f"Node {self.config.name} executed successfully")
+            
+            return result
+            
+        except Exception as e:
+            self.logger.error(f"Node {self.config.name} failed: {str(e)}")
+            metadata.update({
+                "execution_end": datetime.now().isoformat(),
+                "success": False,
+                "error": str(e)
+            })
+            
+            # Add error information to state
+            error_state = {
+                **state,
+                "node_errors": state.get("node_errors", []) + [{
+                    "node": self.config.name,
+                    "error": str(e),
+                    "timestamp": datetime.now().isoformat()
+                }]
+            }
+            
+            raise Exception(f"Node {self.config.name} failed: {str(e)}") from e
+```
+
+### 12.2 Configuration Management
+
+#### Environment-Based Configuration
+
+```python
+# src/config/settings.py
+from pydantic import BaseSettings, Field
+from typing import Optional, Dict, Any
+import os
+
+class DatabaseConfig(BaseSettings):
+    """Database configuration"""
+    host: str = Field(default="localhost")
+    port: int = Field(default=5432)
+    name: str = Field(default="langgraph_app")
+    username: str = Field(default="postgres")
+    password: str = Field(default="")
+    pool_size: int = Field(default=10)
+    max_overflow: int = Field(default=20)
+    
+    class Config:
+        env_prefix = "DB_"
+
+class RedisConfig(BaseSettings):
+    """Redis configuration"""
+    host: str = Field(default="localhost")
+    port: int = Field(default=6379)
+    db: int = Field(default=0)
+    password: Optional[str] = Field(default=None)
+    max_connections: int = Field(default=10)
+    
+    class Config:
+        env_prefix = "REDIS_"
+
+class APIConfig(BaseSettings):
+    """API configuration"""
+    host: str = Field(default="0.0.0.0")
+    port: int = Field(default=8000)
+    workers: int = Field(default=4)
+    debug: bool = Field(default=False)
+    cors_origins: list = Field(default=["*"])
+    rate_limit: str = Field(default="100/minute")
+    
+    class Config:
+        env_prefix = "API_"
+
+class LangGraphConfig(BaseSettings):
+    """LangGraph specific configuration"""
+    checkpoint_backend: str = Field(default="sqlite")
+    checkpoint_path: str = Field(default="./data/checkpoints.db")
+    memory_limit_mb: int = Field(default=1024)
+    execution_timeout: int = Field(default=300)
+    
+    class Config:
+        env_prefix = "LANGGRAPH_"
+
+class MonitoringConfig(BaseSettings):
+    """Monitoring configuration"""
+    metrics_enabled: bool = Field(default=True)
+    metrics_port: int = Field(default=9090)
+    tracing_enabled: bool = Field(default=False)
+    tracing_endpoint: Optional[str] = Field(default=None)
+    log_level: str = Field(default="INFO")
+    
+    class Config:
+        env_prefix = "MONITORING_"
+
+class Settings(BaseSettings):
+    """Main application settings"""
+    
+    # Environment
+    environment: str = Field(default="development")
+    debug: bool = Field(default=False)
+    
+    # Service configurations
+    database: DatabaseConfig = DatabaseConfig()
+    redis: RedisConfig = RedisConfig()
+    api: APIConfig = APIConfig()
+    langgraph: LangGraphConfig = LangGraphConfig()
+    monitoring: MonitoringConfig = MonitoringConfig()
+    
+    # External services
+    external_service_timeout: int = Field(default=30)
+    external_service_retries: int = Field(default=3)
+    
+    class Config:
+        env_file = ".env"
+        case_sensitive = False
+
+    @classmethod
+    def load_from_file(cls, config_file: str):
+        """Load settings from YAML config file"""
+        import yaml
+        
+        with open(config_file, 'r') as f:
+            config_data = yaml.safe_load(f)
+        
+        return cls(**config_data)
+
+# Global settings instance
+settings = Settings()
+```
+
+#### Configuration Validation and Loading
+
+```python
+# src/config/loader.py
+import os
+import yaml
+from pathlib import Path
+from typing import Dict, Any
+from .settings import Settings
+
+class ConfigLoader:
+    """Configuration loader with environment-specific overrides"""
+    
+    def __init__(self, config_dir: str = "config"):
+        self.config_dir = Path(config_dir)
+        self.environment = os.getenv("ENVIRONMENT", "development")
+    
+    def load_config(self) -> Settings:
+        """Load configuration with environment overrides"""
+        
+        # Load base configuration
+        base_config = self._load_yaml_config("base.yaml")
+        
+        # Load environment-specific configuration
+        env_config_file = f"{self.environment}.yaml"
+        env_config = self._load_yaml_config(env_config_file)
+        
+        # Merge configurations
+        merged_config = self._merge_configs(base_config, env_config)
+        
+        # Create settings instance
+        settings = Settings(**merged_config)
+        
+        # Validate configuration
+        self._validate_config(settings)
+        
+        return settings
+    
+    def _load_yaml_config(self, filename: str) -> Dict[str, Any]:
+        """Load YAML configuration file"""
+        config_path = self.config_dir / filename
+        
+        if not config_path.exists():
+            return {}
+        
+        with open(config_path, 'r') as f:
+            return yaml.safe_load(f) or {}
+    
+    def _merge_configs(self, base: Dict[str, Any], override: Dict[str, Any]) -> Dict[str, Any]:
+        """Recursively merge configuration dictionaries"""
+        result = base.copy()
+        
+        for key, value in override.items():
+            if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+                result[key] = self._merge_configs(result[key], value)
+            else:
+                result[key] = value
+        
+        return result
+    
+    def _validate_config(self, settings: Settings):
+        """Validate configuration settings"""
+        
+        # Validate database configuration
+        if settings.environment == "production":
+            assert settings.database.password, "Database password required in production"
+            assert not settings.api.debug, "Debug mode should be disabled in production"
+        
+        # Validate file paths
+        if settings.langgraph.checkpoint_backend == "sqlite":
+            checkpoint_dir = Path(settings.langgraph.checkpoint_path).parent
+            checkpoint_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Validate memory limits
+        assert settings.langgraph.memory_limit_mb > 0, "Memory limit must be positive"
+        assert settings.langgraph.execution_timeout > 0, "Execution timeout must be positive"
+
+# Usage
+def get_settings() -> Settings:
+    """Get application settings"""
+    loader = ConfigLoader()
+    return loader.load_config()
+```
+
+### 12.3 Service Layer Architecture
+
+#### Database Service
+
+```python
+# src/services/database.py
+from sqlalchemy import create_engine, MetaData
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker, Session
+from contextlib import contextmanager
+from typing import Generator
+import logging
+
+from ..config.settings import Settings
+
+logger = logging.getLogger(__name__)
+
+class DatabaseService:
+    """Database service for managing connections and sessions"""
+    
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        self.engine = None
+        self.SessionLocal = None
+        self._initialize()
+    
+    def _initialize(self):
+        """Initialize database connection"""
+        db_config = self.settings.database
+        
+        database_url = (
+            f"postgresql://{db_config.username}:{db_config.password}"
+            f"@{db_config.host}:{db_config.port}/{db_config.name}"
+        )
+        
+        self.engine = create_engine(
+            database_url,
+            pool_size=db_config.pool_size,
+            max_overflow=db_config.max_overflow,
+            pool_pre_ping=True,
+            echo=self.settings.debug
+        )
+        
+        self.SessionLocal = sessionmaker(
+            autocommit=False,
+            autoflush=False,
+            bind=self.engine
+        )
+        
+        logger.info("Database service initialized")
+    
+    @contextmanager
+    def get_session(self) -> Generator[Session, None, None]:
+        """Get database session with automatic cleanup"""
+        session = self.SessionLocal()
+        try:
+            yield session
+            session.commit()
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+    
+    def health_check(self) -> bool:
+        """Check database connectivity"""
+        try:
+            with self.get_session() as session:
+                session.execute("SELECT 1")
+            return True
+        except Exception as e:
+            logger.error(f"Database health check failed: {e}")
+            return False
+
+# Models
+Base = declarative_base()
+
+# Usage in nodes
+class DatabaseNode(BaseNode):
+    """Base class for nodes that need database access"""
+    
+    def __init__(self, config: NodeConfig, db_service: DatabaseService):
+        super().__init__(config)
+        self.db_service = db_service
+    
+    def execute_with_db(self, state: TypedDict, db_operation):
+        """Execute database operation with proper session management"""
+        with self.db_service.get_session() as session:
+            return db_operation(session, state)
+```
+
+#### External API Service
+
+```python
+# src/services/external_apis.py
+import httpx
+import asyncio
+from typing import Dict, Any, Optional
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+import logging
+
+from ..config.settings import Settings
+
+logger = logging.getLogger(__name__)
+
+@dataclass
+class APIResponse:
+    """Standardized API response"""
+    success: bool
+    data: Optional[Dict[str, Any]]
+    error: Optional[str]
+    status_code: int
+    response_time: float
+
+class ExternalAPIService:
+    """Service for managing external API calls"""
+    
+    def __init__(self, settings: Settings):
+        self.settings = settings
+        self.client = httpx.AsyncClient(
+            timeout=settings.external_service_timeout,
+            limits=httpx.Limits(max_keepalive_connections=10, max_connections=100)
+        )
+        self._rate_limits = {}
+    
+    async def call_api(
+        self,
+        method: str,
+        url: str,
+        headers: Optional[Dict[str, str]] = None,
+        data: Optional[Dict[str, Any]] = None,
+        retries: Optional[int] = None
+    ) -> APIResponse:
+        """Make API call with retry logic and rate limiting"""
+        
+        retries = retries or self.settings.external_service_retries
+        start_time = datetime.now()
+        
+        for attempt in range(retries + 1):
+            try:
+                # Check rate limits
+                if not self._check_rate_limit(url):
+                    await asyncio.sleep(1)
+                    continue
+                
+                # Make the request
+                response = await self.client.request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    json=data
+                )
+                
+                response_time = (datetime.now() - start_time).total_seconds()
+                
+                if response.is_success:
+                    return APIResponse(
+                        success=True,
+                        data=response.json() if response.content else None,
+                        error=None,
+                        status_code=response.status_code,
+                        response_time=response_time
+                    )
+                else:
+                    logger.warning(f"API call failed with status {response.status_code}: {url}")
+                    
+                    if attempt == retries:
+                        return APIResponse(
+                            success=False,
+                            data=None,
+                            error=f"HTTP {response.status_code}: {response.text}",
+                            status_code=response.status_code,
+                            response_time=response_time
+                        )
+            
+            except Exception as e:
+                logger.error(f"API call attempt {attempt + 1} failed: {e}")
+                
+                if attempt == retries:
+                    response_time = (datetime.now() - start_time).total_seconds()
+                    return APIResponse(
+                        success=False,
+                        data=None,
+                        error=str(e),
+                        status_code=0,
+                        response_time=response_time
+                    )
+                
+                # Exponential backoff
+                await asyncio.sleep(2 ** attempt)
+        
+        # Should never reach here
+        return APIResponse(
+            success=False,
+            data=None,
+            error="Unexpected error",
+            status_code=0,
+            response_time=0
+        )
+    
+    def _check_rate_limit(self, url: str) -> bool:
+        """Simple rate limiting implementation"""
+        now = datetime.now()
+        
+        if url not in self._rate_limits:
+            self._rate_limits[url] = []
+        
+        # Remove old entries (older than 1 minute)
+        self._rate_limits[url] = [
+            timestamp for timestamp in self._rate_limits[url]
+            if now - timestamp < timedelta(minutes=1)
+        ]
+        
+        # Check if under limit (60 requests per minute)
+        if len(self._rate_limits[url]) < 60:
+            self._rate_limits[url].append(now)
+            return True
+        
+        return False
+    
+    async def close(self):
+        """Close the HTTP client"""
+        await self.client.aclose()
+```
+
+### 12.4 API Layer Implementation
+
+#### FastAPI Application Structure
+
+```python
+# src/api/main.py
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+import logging
+from contextlib import asynccontextmanager
+
+from ..config.settings import get_settings
+from ..services.database import DatabaseService
+from ..services.external_apis import ExternalAPIService
+from .routes import health, processing, analysis
+from .middleware.error_handling import ErrorHandlingMiddleware
+from .middleware.logging import LoggingMiddleware
+from ..monitoring.metrics import setup_metrics
+
+settings = get_settings()
+logger = logging.getLogger(__name__)
+
+# Global services
+db_service = None
+api_service = None
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan events"""
+    global db_service, api_service
+    
+    # Startup
+    logger.info("Starting LangGraph API application")
+    
+    # Initialize services
+    db_service = DatabaseService(settings)
+    api_service = ExternalAPIService(settings)
+    
+    # Setup monitoring
+    if settings.monitoring.metrics_enabled:
+        setup_metrics(app)
+    
+    logger.info("Application startup complete")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down application")
+    
+    if api_service:
+        await api_service.close()
+    
+    logger.info("Application shutdown complete")
+
+# Create FastAPI application
+app = FastAPI(
+    title="LangGraph Application API",
+    description="Production-ready LangGraph application",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Add middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.api.cors_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.add_middleware(ErrorHandlingMiddleware)
+app.add_middleware(LoggingMiddleware)
+
+# Include routers
+app.include_router(health.router, prefix="/health", tags=["health"])
+app.include_router(processing.router, prefix="/api/v1/processing", tags=["processing"])
+app.include_router(analysis.router, prefix="/api/v1/analysis", tags=["analysis"])
+
+# Global exception handler
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"error": exc.detail, "status_code": exc.status_code}
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    logger.error(f"Unhandled exception: {exc}", exc_info=True)
+    return JSONResponse(
+        status_code=500,
+        content={"error": "Internal server error", "status_code": 500}
+    )
+
+# Dependency injection
+def get_db_service() -> DatabaseService:
+    return db_service
+
+def get_api_service() -> ExternalAPIService:
+    return api_service
+```
+
+#### API Route Implementation
+
+```python
+# src/api/routes/processing.py
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
+from typing import Dict, Any, Optional
+import uuid
+from datetime import datetime
+
+from ...services.database import DatabaseService
+from ...services.external_apis import ExternalAPIService
+from ...core.graphs.processing_graph import ProcessingGraph
+from ...config.settings import get_settings
+from ..models.requests import ProcessingRequest
+from ..models.responses import ProcessingResponse, TaskStatusResponse
+from ..main import get_db_service, get_api_service
+
+router = APIRouter()
+settings = get_settings()
+
+# In-memory task storage (in production, use Redis or database)
+task_storage = {}
+
+@router.post("/submit", response_model=ProcessingResponse)
+async def submit_processing_task(
+    request: ProcessingRequest,
+    background_tasks: BackgroundTasks,
+    db_service: DatabaseService = Depends(get_db_service),
+    api_service: ExternalAPIService = Depends(get_api_service)
+):
+    """Submit a processing task for execution"""
+    
+    try:
+        # Generate task ID
+        task_id = str(uuid.uuid4())
+        
+        # Store task info
+        task_storage[task_id] = {
+            "status": "submitted",
+            "created_at": datetime.now().isoformat(),
+            "request": request.dict(),
+            "result": None,
+            "error": None
+        }
+        
+        # Add background task
+        background_tasks.add_task(
+            execute_processing_task,
+            task_id,
+            request,
+            db_service,
+            api_service
+        )
+        
+        return ProcessingResponse(
+            task_id=task_id,
+            status="submitted",
+            message="Task submitted for processing"
+        )
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.get("/status/{task_id}", response_model=TaskStatusResponse)
+async def get_task_status(task_id: str):
+    """Get the status of a processing task"""
+    
+    if task_id not in task_storage:
+        raise HTTPException(status_code=404, detail="Task not found")
+    
+    task_info = task_storage[task_id]
+    
+    return TaskStatusResponse(
+        task_id=task_id,
+        status=task_info["status"],
+        created_at=task_info["created_at"],
+        completed_at=task_info.get("completed_at"),
+        result=task_info.get("result"),
+        error=task_info.get("error")
+    )
+
+async def execute_processing_task(
+    task_id: str,
+    request: ProcessingRequest,
+    db_service: DatabaseService,
+    api_service: ExternalAPIService
+):
+    """Execute processing task in background"""
+    
+    try:
+        # Update task status
+        task_storage[task_id]["status"] = "processing"
+        
+        # Create processing graph
+        processing_graph = ProcessingGraph(
+            config=settings.langgraph.__dict__,
+            db_service=db_service,
+            api_service=api_service
+        )
+        
+        # Execute graph
+        initial_state = {
+            "task_id": task_id,
+            "input_data": request.data,
+            "processing_config": request.config or {},
+            "result": None,
+            "errors": []
+        }
+        
+        result = await processing_graph.ainvoke(initial_state)
+        
+        # Update task with result
+        task_storage[task_id].update({
+            "status": "completed",
+            "completed_at": datetime.now().isoformat(),
+            "result": result
+        })
+        
+    except Exception as e:
+        # Update task with error
+        task_storage[task_id].update({
+            "status": "failed",
+            "completed_at": datetime.now().isoformat(),
+            "error": str(e)
+        })
+
+@router.get("/tasks", response_model=list[TaskStatusResponse])
+async def list_tasks(
+    limit: int = 100,
+    offset: int = 0,
+    status: Optional[str] = None
+):
+    """List processing tasks with pagination and filtering"""
+    
+    tasks = list(task_storage.items())
+    
+    # Filter by status if provided
+    if status:
+        tasks = [(task_id, info) for task_id, info in tasks if info["status"] == status]
+    
+    # Apply pagination
+    paginated_tasks = tasks[offset:offset + limit]
+    
+    return [
+        TaskStatusResponse(
+            task_id=task_id,
+            status=info["status"],
+            created_at=info["created_at"],
+            completed_at=info.get("completed_at"),
+            result=info.get("result"),
+            error=info.get("error")
+        )
+        for task_id, info in paginated_tasks
+    ]
+```
+
+### 12.5 Testing Strategy Implementation
+
+#### Test Configuration
+
+```python
+# tests/conftest.py
+import pytest
+import asyncio
+from unittest.mock import Mock
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from fastapi.testclient import TestClient
+
+from src.config.settings import Settings
+from src.services.database import DatabaseService, Base
+from src.services.external_apis import ExternalAPIService
+from src.api.main import app
+
+@pytest.fixture(scope="session")
+def event_loop():
+    """Create an instance of the default event loop for the test session."""
+    loop = asyncio.get_event_loop_policy().new_event_loop()
+    yield loop
+    loop.close()
+
+@pytest.fixture
+def test_settings():
+    """Test settings configuration"""
+    return Settings(
+        environment="testing",
+        debug=True,
+        database={
+            "host": "localhost",
+            "port": 5432,
+            "name": "test_langgraph",
+            "username": "test_user",
+            "password": "test_pass"
+        },
+        langgraph={
+            "checkpoint_backend": "memory",
+            "memory_limit_mb": 256,
+            "execution_timeout": 30
+        }
+    )
+
+@pytest.fixture
+def test_db_service(test_settings):
+    """Test database service with in-memory SQLite"""
+    # Override with in-memory database for testing
+    engine = create_engine("sqlite:///:memory:", echo=False)
+    Base.metadata.create_all(engine)
+    
+    # Mock the database service
+    db_service = Mock(spec=DatabaseService)
+    db_service.settings = test_settings
+    db_service.engine = engine
+    db_service.SessionLocal = sessionmaker(bind=engine)
+    
+    return db_service
+
+@pytest.fixture
+def mock_api_service():
+    """Mock external API service"""
+    api_service = Mock(spec=ExternalAPIService)
+    
+    # Configure mock responses
+    api_service.call_api.return_value = {
+        "success": True,
+        "data": {"result": "test_response"},
+        "error": None,
+        "status_code": 200,
+        "response_time": 0.1
+    }
+    
+    return api_service
+
+@pytest.fixture
+def test_client(test_db_service, mock_api_service):
+    """Test client with mocked dependencies"""
+    
+    # Override dependencies
+    app.dependency_overrides[get_db_service] = lambda: test_db_service
+    app.dependency_overrides[get_api_service] = lambda: mock_api_service
+    
+    with TestClient(app) as client:
+        yield client
+    
+    # Clean up
+    app.dependency_overrides.clear()
+
+@pytest.fixture
+def sample_processing_data():
+    """Sample data for processing tests"""
+    return {
+        "data": {
+            "text": "This is a sample text for processing",
+            "metadata": {"source": "test", "priority": "high"}
+        },
+        "config": {
+            "processing_type": "standard",
+            "timeout": 30
+        }
+    }
+```
+
+Great progress! I've successfully added a comprehensive Real-World Project Structure section that covers:
+
+- **Enterprise-Grade Directory Structure**: Complete production-ready project organization
+- **Core Module Implementation**: Base classes for graphs and nodes with proper abstraction
+- **Configuration Management**: Environment-based config with validation and loading
+- **Service Layer Architecture**: Database and external API services with proper error handling
+- **API Layer Implementation**: FastAPI with proper middleware, routing, and dependency injection
+- **Testing Strategy**: Comprehensive test setup with fixtures and mocking
+
+This provides developers with a solid foundation for building production-ready LangGraph applications with proper separation of concerns, scalability, and maintainability.
+
+---
+
+## 13. Testing Strategies
+
+Testing is crucial for building reliable LangGraph applications. This section covers comprehensive testing approaches from unit tests to end-to-end testing, performance testing, and continuous integration strategies.
+
+### 13.1 Test Structure Overview
 
 ```
 tests/
@@ -3597,7 +9220,1217 @@ Make it executable:
 chmod +x scripts/run_tests.sh
 ```
 
-## Chapter 13: Production Deployment Examples
+---
+
+## 14. Performance Optimization
+
+Performance is critical for production LangGraph applications. This section covers profiling, optimization techniques, scaling patterns, and best practices for high-performance graph execution.
+
+### 14.1 Performance Profiling and Monitoring
+
+#### Built-in Performance Monitoring
+
+```python
+import time
+import asyncio
+from typing import TypedDict, Dict, Any, List
+from dataclasses import dataclass
+from contextlib import asynccontextmanager
+import psutil
+import threading
+from datetime import datetime
+
+@dataclass
+class NodePerformanceMetrics:
+    """Performance metrics for a single node execution"""
+    node_name: str
+    execution_time_ms: float
+    memory_usage_mb: float
+    cpu_usage_percent: float
+    input_size_bytes: int
+    output_size_bytes: int
+    timestamp: str
+
+@dataclass
+class GraphPerformanceMetrics:
+    """Overall graph performance metrics"""
+    graph_name: str
+    total_execution_time_ms: float
+    node_metrics: List[NodePerformanceMetrics]
+    memory_peak_mb: float
+    memory_start_mb: float
+    memory_end_mb: float
+    total_nodes_executed: int
+    
+class PerformanceProfiler:
+    """Performance profiler for LangGraph applications"""
+    
+    def __init__(self):
+        self.node_metrics: List[NodePerformanceMetrics] = []
+        self.graph_start_time: float = 0
+        self.memory_start: float = 0
+        self.memory_peak: float = 0
+        
+    def start_graph_profiling(self):
+        """Start profiling a graph execution"""
+        self.graph_start_time = time.time()
+        self.memory_start = psutil.Process().memory_info().rss / 1024 / 1024  # MB
+        self.memory_peak = self.memory_start
+        self.node_metrics.clear()
+    
+    @asynccontextmanager
+    async def profile_node(self, node_name: str, state: Dict[str, Any]):
+        """Profile a single node execution"""
+        import sys
+        
+        # Measure input size
+        input_size = sys.getsizeof(str(state))
+        
+        # Start metrics
+        start_time = time.time()
+        start_memory = psutil.Process().memory_info().rss / 1024 / 1024
+        
+        # Monitor CPU usage in background
+        cpu_samples = []
+        cpu_monitoring = True
+        
+        def monitor_cpu():
+            while cpu_monitoring:
+                cpu_samples.append(psutil.cpu_percent(interval=0.1))
+        
+        cpu_thread = threading.Thread(target=monitor_cpu)
+        cpu_thread.start()
+        
+        try:
+            yield
+            
+            # Stop monitoring
+            cpu_monitoring = False
+            cpu_thread.join(timeout=1)
+            
+            # Calculate metrics
+            end_time = time.time()
+            end_memory = psutil.Process().memory_info().rss / 1024 / 1024
+            execution_time = (end_time - start_time) * 1000  # ms
+            
+            # Update peak memory
+            self.memory_peak = max(self.memory_peak, end_memory)
+            
+            # Calculate average CPU usage
+            avg_cpu = sum(cpu_samples) / len(cpu_samples) if cpu_samples else 0
+            
+            # Estimate output size (simplified)
+            output_size = sys.getsizeof(str(state))
+            
+            # Record metrics
+            metrics = NodePerformanceMetrics(
+                node_name=node_name,
+                execution_time_ms=execution_time,
+                memory_usage_mb=end_memory - start_memory,
+                cpu_usage_percent=avg_cpu,
+                input_size_bytes=input_size,
+                output_size_bytes=output_size,
+                timestamp=datetime.now().isoformat()
+            )
+            
+            self.node_metrics.append(metrics)
+            
+        except Exception:
+            cpu_monitoring = False
+            cpu_thread.join(timeout=1)
+            raise
+    
+    def get_graph_metrics(self, graph_name: str) -> GraphPerformanceMetrics:
+        """Get complete graph performance metrics"""
+        total_time = (time.time() - self.graph_start_time) * 1000  # ms
+        current_memory = psutil.Process().memory_info().rss / 1024 / 1024
+        
+        return GraphPerformanceMetrics(
+            graph_name=graph_name,
+            total_execution_time_ms=total_time,
+            node_metrics=self.node_metrics.copy(),
+            memory_peak_mb=self.memory_peak,
+            memory_start_mb=self.memory_start,
+            memory_end_mb=current_memory,
+            total_nodes_executed=len(self.node_metrics)
+        )
+    
+    def print_performance_report(self, metrics: GraphPerformanceMetrics):
+        """Print a formatted performance report"""
+        print(f"\n=== Performance Report: {metrics.graph_name} ===")
+        print(f"Total Execution Time: {metrics.total_execution_time_ms:.2f} ms")
+        print(f"Memory Usage: {metrics.memory_start_mb:.1f} → {metrics.memory_end_mb:.1f} MB (Peak: {metrics.memory_peak_mb:.1f} MB)")
+        print(f"Nodes Executed: {metrics.total_nodes_executed}")
+        
+        print(f"\n=== Node Performance ===")
+        for node in sorted(metrics.node_metrics, key=lambda x: x.execution_time_ms, reverse=True):
+            print(f"{node.node_name:20} | {node.execution_time_ms:8.2f} ms | {node.memory_usage_mb:+6.1f} MB | CPU: {node.cpu_usage_percent:5.1f}%")
+
+# Usage with existing graphs
+class ProfiledNode(BaseNode):
+    """Base node with built-in performance profiling"""
+    
+    def __init__(self, config: NodeConfig, profiler: PerformanceProfiler):
+        super().__init__(config)
+        self.profiler = profiler
+    
+    async def __call__(self, state: TypedDict) -> TypedDict:
+        """Execute node with profiling"""
+        async with self.profiler.profile_node(self.config.name, state):
+            return await super().__call__(state)
+
+# Example usage
+async def run_profiled_graph():
+    """Example of running a graph with performance profiling"""
+    profiler = PerformanceProfiler()
+    profiler.start_graph_profiling()
+    
+    # Your graph execution here
+    # ... 
+    
+    # Get and display metrics
+    metrics = profiler.get_graph_metrics("my_graph")
+    profiler.print_performance_report(metrics)
+    
+    return metrics
+```
+
+#### Advanced Profiling with py-spy and Memory Profiler
+
+```python
+import subprocess
+import os
+import signal
+from pathlib import Path
+from typing import Optional
+import tempfile
+
+class AdvancedProfiler:
+    """Advanced profiling using external tools"""
+    
+    def __init__(self, output_dir: str = "profiling_output"):
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(exist_ok=True)
+        self._py_spy_pid: Optional[int] = None
+    
+    def start_py_spy_profiling(self, duration_seconds: int = 60):
+        """Start py-spy CPU profiling"""
+        output_file = self.output_dir / f"cpu_profile_{int(time.time())}.svg"
+        
+        cmd = [
+            "py-spy", "record",
+            "-o", str(output_file),
+            "-d", str(duration_seconds),
+            "-p", str(os.getpid())
+        ]
+        
+        try:
+            # Start py-spy in background
+            process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self._py_spy_pid = process.pid
+            print(f"Started py-spy profiling (PID: {process.pid}), output: {output_file}")
+            return output_file
+        except FileNotFoundError:
+            print("py-spy not found. Install with: pip install py-spy")
+            return None
+    
+    def stop_py_spy_profiling(self):
+        """Stop py-spy profiling"""
+        if self._py_spy_pid:
+            try:
+                os.kill(self._py_spy_pid, signal.SIGTERM)
+                print("Stopped py-spy profiling")
+            except ProcessLookupError:
+                print("py-spy process already terminated")
+            finally:
+                self._py_spy_pid = None
+    
+    def profile_memory_usage(self, func, *args, **kwargs):
+        """Profile memory usage of a function"""
+        try:
+            from memory_profiler import profile as memory_profile
+            
+            # Create a temporary file for memory profile output
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+                temp_file = f.name
+            
+            # Run function with memory profiling
+            @memory_profile(stream=open(temp_file, 'w+'))
+            def profiled_func():
+                return func(*args, **kwargs)
+            
+            result = profiled_func()
+            
+            # Read and display results
+            with open(temp_file, 'r') as f:
+                profile_output = f.read()
+                print("Memory Usage Profile:")
+                print(profile_output)
+            
+            # Clean up
+            os.unlink(temp_file)
+            
+            return result
+            
+        except ImportError:
+            print("memory_profiler not found. Install with: pip install memory-profiler")
+            return func(*args, **kwargs)
+    
+    def create_flame_graph(self, perf_data_file: str):
+        """Create flame graph from perf data"""
+        try:
+            flame_graph_file = self.output_dir / "flamegraph.svg"
+            
+            cmd = [
+                "flamegraph.pl",
+                perf_data_file,
+                ">", str(flame_graph_file)
+            ]
+            
+            subprocess.run(" ".join(cmd), shell=True, check=True)
+            print(f"Flame graph created: {flame_graph_file}")
+            return flame_graph_file
+            
+        except subprocess.CalledProcessError:
+            print("Failed to create flame graph. Ensure flamegraph.pl is installed.")
+            return None
+
+# Example usage
+async def profile_graph_execution():
+    """Example of comprehensive graph profiling"""
+    profiler = AdvancedProfiler()
+    
+    # Start CPU profiling
+    py_spy_output = profiler.start_py_spy_profiling(duration_seconds=30)
+    
+    try:
+        # Run your graph with memory profiling
+        def run_graph():
+            # Your graph execution code here
+            time.sleep(1)  # Simulate work
+            return "Graph execution complete"
+        
+        result = profiler.profile_memory_usage(run_graph)
+        
+        print(f"Graph execution result: {result}")
+        
+    finally:
+        # Stop CPU profiling
+        profiler.stop_py_spy_profiling()
+        
+        if py_spy_output:
+            print(f"CPU profile saved to: {py_spy_output}")
+```
+
+### 14.2 Optimization Techniques
+
+#### Node-Level Optimizations
+
+```python
+import asyncio
+import concurrent.futures
+from typing import TypedDict, List, Dict, Any
+from functools import lru_cache, wraps
+import time
+
+class OptimizedState(TypedDict):
+    data: List[str]
+    processed_data: List[Dict[str, Any]]
+    cache_hits: int
+    cache_misses: int
+
+# 1. Caching expensive operations
+class CachedProcessingNode(BaseNode):
+    """Node with built-in caching for expensive operations"""
+    
+    def __init__(self, config: NodeConfig):
+        super().__init__(config)
+        self.cache: Dict[str, Any] = {}
+        self.cache_stats = {"hits": 0, "misses": 0}
+    
+    @lru_cache(maxsize=1000)
+    def expensive_computation(self, data: str) -> Dict[str, Any]:
+        """Example expensive computation with caching"""
+        # Simulate expensive operation
+        time.sleep(0.1)
+        
+        return {
+            "processed": data.upper(),
+            "word_count": len(data.split()),
+            "char_count": len(data),
+            "timestamp": time.time()
+        }
+    
+    def execute(self, state: OptimizedState) -> OptimizedState:
+        """Execute with caching"""
+        processed_data = []
+        
+        for item in state["data"]:
+            # Check cache first
+            cache_key = f"processed_{hash(item)}"
+            
+            if cache_key in self.cache:
+                result = self.cache[cache_key]
+                self.cache_stats["hits"] += 1
+            else:
+                result = self.expensive_computation(item)
+                self.cache[cache_key] = result
+                self.cache_stats["misses"] += 1
+            
+            processed_data.append(result)
+        
+        return {
+            **state,
+            "processed_data": processed_data,
+            "cache_hits": state.get("cache_hits", 0) + self.cache_stats["hits"],
+            "cache_misses": state.get("cache_misses", 0) + self.cache_stats["misses"]
+        }
+
+# 2. Parallel processing within nodes
+class ParallelProcessingNode(BaseNode):
+    """Node that processes data in parallel"""
+    
+    def __init__(self, config: NodeConfig, max_workers: int = 4):
+        super().__init__(config)
+        self.max_workers = max_workers
+    
+    def process_single_item(self, item: str) -> Dict[str, Any]:
+        """Process a single item"""
+        # Simulate some processing
+        time.sleep(0.05)
+        return {
+            "item": item,
+            "length": len(item),
+            "processed_at": time.time()
+        }
+    
+    def execute(self, state: OptimizedState) -> OptimizedState:
+        """Execute with parallel processing"""
+        
+        # Use ThreadPoolExecutor for I/O-bound tasks
+        with concurrent.futures.ThreadPoolExecutor(max_workers=self.max_workers) as executor:
+            # Submit all tasks
+            future_to_item = {
+                executor.submit(self.process_single_item, item): item
+                for item in state["data"]
+            }
+            
+            # Collect results as they complete
+            processed_data = []
+            for future in concurrent.futures.as_completed(future_to_item):
+                try:
+                    result = future.result()
+                    processed_data.append(result)
+                except Exception as e:
+                    self.logger.error(f"Failed to process item: {e}")
+        
+        return {
+            **state,
+            "processed_data": processed_data
+        }
+
+# 3. Async processing with batching
+class AsyncBatchProcessingNode(BaseNode):
+    """Node that processes data asynchronously in batches"""
+    
+    def __init__(self, config: NodeConfig, batch_size: int = 10):
+        super().__init__(config)
+        self.batch_size = batch_size
+    
+    async def process_batch(self, batch: List[str]) -> List[Dict[str, Any]]:
+        """Process a batch of items asynchronously"""
+        tasks = [self.process_item_async(item) for item in batch]
+        return await asyncio.gather(*tasks, return_exceptions=True)
+    
+    async def process_item_async(self, item: str) -> Dict[str, Any]:
+        """Process a single item asynchronously"""
+        # Simulate async I/O operation
+        await asyncio.sleep(0.01)
+        return {
+            "item": item,
+            "processed": item.upper(),
+            "timestamp": time.time()
+        }
+    
+    async def execute(self, state: OptimizedState) -> OptimizedState:
+        """Execute with async batch processing"""
+        data = state["data"]
+        all_results = []
+        
+        # Process data in batches
+        for i in range(0, len(data), self.batch_size):
+            batch = data[i:i + self.batch_size]
+            batch_results = await self.process_batch(batch)
+            
+            # Filter out exceptions and add successful results
+            successful_results = [
+                result for result in batch_results 
+                if not isinstance(result, Exception)
+            ]
+            all_results.extend(successful_results)
+        
+        return {
+            **state,
+            "processed_data": all_results
+        }
+
+# 4. Memory-efficient streaming processing
+class StreamingProcessingNode(BaseNode):
+    """Node that processes data in a memory-efficient streaming manner"""
+    
+    def __init__(self, config: NodeConfig, chunk_size: int = 100):
+        super().__init__(config)
+        self.chunk_size = chunk_size
+    
+    def process_chunk(self, chunk: List[str]) -> List[Dict[str, Any]]:
+        """Process a chunk of data"""
+        return [
+            {
+                "item": item,
+                "processed": item.strip().lower(),
+                "chunk_id": id(chunk)
+            }
+            for item in chunk
+        ]
+    
+    def execute(self, state: OptimizedState) -> OptimizedState:
+        """Execute with streaming processing"""
+        data = state["data"]
+        
+        # Generator for memory-efficient processing
+        def process_stream():
+            for i in range(0, len(data), self.chunk_size):
+                chunk = data[i:i + self.chunk_size]
+                yield from self.process_chunk(chunk)
+        
+        # Process stream and collect results
+        processed_data = list(process_stream())
+        
+        return {
+            **state,
+            "processed_data": processed_data
+        }
+```
+
+#### Graph-Level Optimizations
+
+```python
+from typing import TypedDict, Set
+from langgraph.graph import StateGraph, START, END
+
+class OptimizedGraphBuilder:
+    """Builder for creating optimized graphs"""
+    
+    def __init__(self):
+        self.graph = None
+        self.node_dependencies: Dict[str, Set[str]] = {}
+        self.node_priorities: Dict[str, int] = {}
+    
+    def analyze_dependencies(self, state_schema: TypedDict) -> Dict[str, Set[str]]:
+        """Analyze node dependencies based on state keys"""
+        # This is a simplified example - in practice, you'd analyze
+        # which state keys each node reads vs writes
+        return {
+            "data_loader": set(),
+            "preprocessor": {"data_loader"},
+            "processor_a": {"preprocessor"},
+            "processor_b": {"preprocessor"},
+            "aggregator": {"processor_a", "processor_b"}
+        }
+    
+    def identify_parallel_nodes(self) -> List[Set[str]]:
+        """Identify nodes that can run in parallel"""
+        # Find nodes with no dependencies between them
+        parallel_groups = []
+        
+        # Simplified logic - group nodes by dependency level
+        level_0 = {node for node, deps in self.node_dependencies.items() if not deps}
+        level_1 = {node for node, deps in self.node_dependencies.items() 
+                  if deps and deps.issubset(level_0)}
+        
+        if len(level_1) > 1:
+            parallel_groups.append(level_1)
+        
+        return parallel_groups
+    
+    def optimize_graph_structure(self, original_graph: StateGraph) -> StateGraph:
+        """Optimize graph structure for better performance"""
+        
+        # Analyze the graph
+        parallel_groups = self.identify_parallel_nodes()
+        
+        # Create optimized graph
+        optimized_graph = StateGraph(OptimizedState)
+        
+        # Add nodes (this would be more sophisticated in practice)
+        optimized_graph.add_node("data_loader", CachedProcessingNode(NodeConfig("data_loader")))
+        optimized_graph.add_node("parallel_processor", ParallelProcessingNode(NodeConfig("parallel_processor")))
+        optimized_graph.add_node("stream_processor", StreamingProcessingNode(NodeConfig("stream_processor")))
+        
+        # Add optimized edges
+        optimized_graph.add_edge(START, "data_loader")
+        optimized_graph.add_edge("data_loader", "parallel_processor")
+        optimized_graph.add_edge("parallel_processor", "stream_processor")
+        optimized_graph.add_edge("stream_processor", END)
+        
+        return optimized_graph
+
+# Performance testing utilities
+class PerformanceBenchmark:
+    """Utility for benchmarking graph performance"""
+    
+    def __init__(self):
+        self.results: List[Dict[str, Any]] = []
+    
+    async def benchmark_graph(
+        self, 
+        graph_factory: callable, 
+        test_data: List[Dict[str, Any]], 
+        iterations: int = 5
+    ) -> Dict[str, Any]:
+        """Benchmark a graph with different configurations"""
+        
+        results = []
+        
+        for i in range(iterations):
+            graph = graph_factory()
+            
+            start_time = time.time()
+            start_memory = psutil.Process().memory_info().rss / 1024 / 1024
+            
+            # Run graph
+            for data in test_data:
+                await graph.ainvoke(data)
+            
+            end_time = time.time()
+            end_memory = psutil.Process().memory_info().rss / 1024 / 1024
+            
+            results.append({
+                "iteration": i + 1,
+                "execution_time": end_time - start_time,
+                "memory_used": end_memory - start_memory,
+                "data_points": len(test_data)
+            })
+        
+        # Calculate statistics
+        execution_times = [r["execution_time"] for r in results]
+        memory_usage = [r["memory_used"] for r in results]
+        
+        return {
+            "avg_execution_time": sum(execution_times) / len(execution_times),
+            "min_execution_time": min(execution_times),
+            "max_execution_time": max(execution_times),
+            "avg_memory_usage": sum(memory_usage) / len(memory_usage),
+            "throughput": len(test_data) / (sum(execution_times) / len(execution_times)),
+            "detailed_results": results
+        }
+    
+    def compare_optimizations(self, configurations: Dict[str, callable]) -> None:
+        """Compare different optimization configurations"""
+        
+        print("Performance Comparison Results")
+        print("=" * 50)
+        
+        for name, factory in configurations.items():
+            test_data = [{"data": [f"item_{i}" for i in range(100)]} for _ in range(10)]
+            
+            benchmark_result = asyncio.run(
+                self.benchmark_graph(factory, test_data, iterations=3)
+            )
+            
+            print(f"\n{name}:")
+            print(f"  Avg Execution Time: {benchmark_result['avg_execution_time']:.3f}s")
+            print(f"  Avg Memory Usage: {benchmark_result['avg_memory_usage']:.1f} MB")
+            print(f"  Throughput: {benchmark_result['throughput']:.1f} items/sec")
+
+# Example usage
+def run_performance_benchmarks():
+    """Example of running performance benchmarks"""
+    
+    benchmark = PerformanceBenchmark()
+    
+    # Define different configurations to test
+    configurations = {
+        "Basic Graph": lambda: create_basic_graph(),
+        "Cached Graph": lambda: create_cached_graph(),
+        "Parallel Graph": lambda: create_parallel_graph(),
+        "Optimized Graph": lambda: create_optimized_graph()
+    }
+    
+    benchmark.compare_optimizations(configurations)
+
+def create_basic_graph():
+    """Create basic unoptimized graph"""
+    graph = StateGraph(OptimizedState)
+    graph.add_node("processor", BaseNode(NodeConfig("processor")))
+    graph.add_edge(START, "processor")
+    graph.add_edge("processor", END)
+    return graph.compile()
+
+def create_cached_graph():
+    """Create graph with caching"""
+    graph = StateGraph(OptimizedState)
+    graph.add_node("cached_processor", CachedProcessingNode(NodeConfig("cached_processor")))
+    graph.add_edge(START, "cached_processor")
+    graph.add_edge("cached_processor", END)
+    return graph.compile()
+
+def create_parallel_graph():
+    """Create graph with parallel processing"""
+    graph = StateGraph(OptimizedState)
+    graph.add_node("parallel_processor", ParallelProcessingNode(NodeConfig("parallel_processor")))
+    graph.add_edge(START, "parallel_processor")
+    graph.add_edge("parallel_processor", END)
+    return graph.compile()
+
+def create_optimized_graph():
+    """Create fully optimized graph"""
+    optimizer = OptimizedGraphBuilder()
+    return optimizer.optimize_graph_structure(StateGraph(OptimizedState))
+```
+
+### 14.3 Scaling Patterns
+
+#### Horizontal Scaling with Multiple Workers
+
+```python
+import multiprocessing as mp
+from concurrent.futures import ProcessPoolExecutor, as_completed
+from typing import List, Dict, Any
+import queue
+import threading
+import time
+
+class GraphWorkerPool:
+    """Pool of workers for processing graph tasks"""
+    
+    def __init__(self, num_workers: int = None):
+        self.num_workers = num_workers or mp.cpu_count()
+        self.task_queue = queue.Queue()
+        self.result_queue = queue.Queue()
+        self.workers: List[threading.Thread] = []
+        self.shutdown_flag = threading.Event()
+    
+    def start_workers(self, graph_factory: callable):
+        """Start worker threads"""
+        for i in range(self.num_workers):
+            worker = threading.Thread(
+                target=self._worker_loop,
+                args=(graph_factory, i),
+                daemon=True
+            )
+            worker.start()
+            self.workers.append(worker)
+        
+        print(f"Started {self.num_workers} workers")
+    
+    def _worker_loop(self, graph_factory: callable, worker_id: int):
+        """Main loop for worker threads"""
+        graph = graph_factory()
+        
+        while not self.shutdown_flag.is_set():
+            try:
+                # Get task with timeout
+                task = self.task_queue.get(timeout=1)
+                
+                if task is None:  # Poison pill
+                    break
+                
+                task_id, state = task
+                
+                try:
+                    # Process task
+                    start_time = time.time()
+                    result = graph.invoke(state)
+                    execution_time = time.time() - start_time
+                    
+                    # Put result
+                    self.result_queue.put({
+                        "task_id": task_id,
+                        "result": result,
+                        "worker_id": worker_id,
+                        "execution_time": execution_time,
+                        "status": "success"
+                    })
+                    
+                except Exception as e:
+                    # Put error result
+                    self.result_queue.put({
+                        "task_id": task_id,
+                        "result": None,
+                        "worker_id": worker_id,
+                        "error": str(e),
+                        "status": "error"
+                    })
+                
+                finally:
+                    self.task_queue.task_done()
+                    
+            except queue.Empty:
+                continue
+    
+    def submit_task(self, task_id: str, state: Dict[str, Any]):
+        """Submit a task for processing"""
+        self.task_queue.put((task_id, state))
+    
+    def get_results(self, timeout: float = None) -> List[Dict[str, Any]]:
+        """Get all available results"""
+        results = []
+        
+        while True:
+            try:
+                result = self.result_queue.get(timeout=timeout or 0.1)
+                results.append(result)
+                self.result_queue.task_done()
+            except queue.Empty:
+                break
+        
+        return results
+    
+    def shutdown(self, timeout: float = 10):
+        """Shutdown worker pool"""
+        print("Shutting down worker pool...")
+        
+        # Signal shutdown
+        self.shutdown_flag.set()
+        
+        # Add poison pills
+        for _ in self.workers:
+            self.task_queue.put(None)
+        
+        # Wait for workers to finish
+        for worker in self.workers:
+            worker.join(timeout=timeout)
+        
+        print("Worker pool shutdown complete")
+
+# Distributed processing with process pools
+class DistributedGraphProcessor:
+    """Distributed graph processing using multiprocessing"""
+    
+    def __init__(self, num_processes: int = None):
+        self.num_processes = num_processes or mp.cpu_count()
+    
+    def process_batch(self, graph_factory: callable, tasks: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """Process a batch of tasks across multiple processes"""
+        
+        with ProcessPoolExecutor(max_workers=self.num_processes) as executor:
+            # Create a graph in each process
+            futures = []
+            
+            for i, task in enumerate(tasks):
+                future = executor.submit(self._process_single_task, graph_factory, task, i)
+                futures.append(future)
+            
+            # Collect results as they complete
+            results = []
+            for future in as_completed(futures):
+                try:
+                    result = future.result()
+                    results.append(result)
+                except Exception as e:
+                    results.append({
+                        "error": str(e),
+                        "status": "failed"
+                    })
+            
+            return results
+    
+    @staticmethod
+    def _process_single_task(graph_factory: callable, task: Dict[str, Any], task_id: int) -> Dict[str, Any]:
+        """Process a single task in a separate process"""
+        try:
+            graph = graph_factory()
+            start_time = time.time()
+            result = graph.invoke(task)
+            execution_time = time.time() - start_time
+            
+            return {
+                "task_id": task_id,
+                "result": result,
+                "execution_time": execution_time,
+                "status": "success"
+            }
+            
+        except Exception as e:
+            return {
+                "task_id": task_id,
+                "error": str(e),
+                "status": "failed"
+            }
+
+# Example usage
+def demonstrate_scaling():
+    """Demonstrate different scaling approaches"""
+    
+    def create_test_graph():
+        """Create a test graph for scaling demonstration"""
+        graph = StateGraph(OptimizedState)
+        graph.add_node("processor", ParallelProcessingNode(NodeConfig("processor")))
+        graph.add_edge(START, "processor")
+        graph.add_edge("processor", END)
+        return graph.compile()
+    
+    # Test data
+    test_tasks = [
+        {"data": [f"task_{i}_item_{j}" for j in range(10)]}
+        for i in range(20)
+    ]
+    
+    print("Testing scaling approaches...")
+    
+    # 1. Single-threaded baseline
+    start_time = time.time()
+    graph = create_test_graph()
+    single_results = []
+    for task in test_tasks:
+        result = graph.invoke(task)
+        single_results.append(result)
+    single_time = time.time() - start_time
+    
+    print(f"Single-threaded: {single_time:.2f}s for {len(test_tasks)} tasks")
+    
+    # 2. Thread pool scaling
+    start_time = time.time()
+    worker_pool = GraphWorkerPool(num_workers=4)
+    worker_pool.start_workers(create_test_graph)
+    
+    # Submit tasks
+    for i, task in enumerate(test_tasks):
+        worker_pool.submit_task(f"task_{i}", task)
+    
+    # Wait for completion and collect results
+    worker_pool.task_queue.join()
+    thread_results = worker_pool.get_results(timeout=1)
+    worker_pool.shutdown()
+    thread_time = time.time() - start_time
+    
+    print(f"Thread pool (4 workers): {thread_time:.2f}s for {len(test_tasks)} tasks")
+    
+    # 3. Process pool scaling
+    start_time = time.time()
+    distributed_processor = DistributedGraphProcessor(num_processes=4)
+    process_results = distributed_processor.process_batch(create_test_graph, test_tasks)
+    process_time = time.time() - start_time
+    
+    print(f"Process pool (4 processes): {process_time:.2f}s for {len(test_tasks)} tasks")
+    
+    # Performance summary
+    print("\nScaling Performance Summary:")
+    print(f"Single-threaded baseline: {single_time:.2f}s (1.00x)")
+    print(f"Thread pool speedup: {single_time/thread_time:.2f}x")
+    print(f"Process pool speedup: {single_time/process_time:.2f}x")
+```
+
+### 14.4 Best Practices for Performance
+
+#### Performance Guidelines
+
+```python
+"""
+Performance Optimization Best Practices for LangGraph
+
+1. **Node-Level Optimizations**:
+   - Cache expensive computations using @lru_cache or custom caching
+   - Use parallel processing for independent operations
+   - Implement async processing for I/O-bound operations
+   - Process data in batches to reduce overhead
+   - Use generators for memory-efficient streaming
+
+2. **Graph-Level Optimizations**:
+   - Minimize state size by removing unnecessary data
+   - Use conditional edges to skip unnecessary nodes
+   - Parallelize independent node execution
+   - Optimize the order of node execution
+   - Use checkpoints strategically to enable recovery without performance penalty
+
+3. **Memory Management**:
+   - Monitor memory usage and identify leaks
+   - Use weak references where appropriate
+   - Clear large objects from state when no longer needed
+   - Consider using memory-mapped files for large datasets
+   - Profile memory allocation patterns
+
+4. **Scaling Strategies**:
+   - Use thread pools for I/O-bound parallel processing
+   - Use process pools for CPU-bound parallel processing
+   - Implement horizontal scaling with worker queues
+   - Consider distributed processing for very large workloads
+   - Monitor resource utilization and scale accordingly
+
+5. **Profiling and Monitoring**:
+   - Profile regularly during development
+   - Set up continuous performance monitoring in production
+   - Use flame graphs to identify CPU bottlenecks
+   - Monitor memory usage patterns over time
+   - Track key performance metrics (latency, throughput, error rates)
+
+6. **Database and I/O Optimizations**:
+   - Use connection pooling for database operations
+   - Implement query optimization and indexing
+   - Use async I/O operations where possible
+   - Cache frequently accessed data
+   - Batch database operations when possible
+
+7. **LLM-Specific Optimizations**:
+   - Reuse LLM clients across node executions
+   - Implement response caching for repeated queries
+   - Use streaming for long-form content generation
+   - Optimize prompt templates for efficiency
+   - Monitor token usage and costs
+"""
+
+# Performance testing framework
+class PerformanceTestSuite:
+    """Comprehensive performance testing framework"""
+    
+    def __init__(self):
+        self.test_results: Dict[str, Any] = {}
+    
+    def run_all_tests(self, graph_factory: callable) -> Dict[str, Any]:
+        """Run complete performance test suite"""
+        
+        print("Running Performance Test Suite...")
+        print("=" * 50)
+        
+        # 1. Latency tests
+        latency_results = self.test_latency(graph_factory)
+        
+        # 2. Throughput tests
+        throughput_results = self.test_throughput(graph_factory)
+        
+        # 3. Memory usage tests
+        memory_results = self.test_memory_usage(graph_factory)
+        
+        # 4. Concurrency tests
+        concurrency_results = self.test_concurrency(graph_factory)
+        
+        # 5. Stress tests
+        stress_results = self.test_stress_limits(graph_factory)
+        
+        # Compile results
+        results = {
+            "latency": latency_results,
+            "throughput": throughput_results,
+            "memory": memory_results,
+            "concurrency": concurrency_results,
+            "stress": stress_results,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        self.print_performance_summary(results)
+        return results
+    
+    def test_latency(self, graph_factory: callable, iterations: int = 100) -> Dict[str, float]:
+        """Test execution latency"""
+        graph = graph_factory()
+        test_state = {"data": ["test_item"] * 10}
+        
+        latencies = []
+        for _ in range(iterations):
+            start_time = time.time()
+            graph.invoke(test_state)
+            latency = (time.time() - start_time) * 1000  # ms
+            latencies.append(latency)
+        
+        return {
+            "mean_latency_ms": sum(latencies) / len(latencies),
+            "min_latency_ms": min(latencies),
+            "max_latency_ms": max(latencies),
+            "p95_latency_ms": sorted(latencies)[int(0.95 * len(latencies))],
+            "p99_latency_ms": sorted(latencies)[int(0.99 * len(latencies))]
+        }
+    
+    def test_throughput(self, graph_factory: callable, duration_seconds: int = 30) -> Dict[str, float]:
+        """Test processing throughput"""
+        graph = graph_factory()
+        test_state = {"data": ["item"] * 5}
+        
+        start_time = time.time()
+        completed_tasks = 0
+        
+        while (time.time() - start_time) < duration_seconds:
+            graph.invoke(test_state)
+            completed_tasks += 1
+        
+        actual_duration = time.time() - start_time
+        throughput = completed_tasks / actual_duration
+        
+        return {
+            "throughput_tasks_per_second": throughput,
+            "total_tasks_completed": completed_tasks,
+            "test_duration_seconds": actual_duration
+        }
+    
+    def test_memory_usage(self, graph_factory: callable) -> Dict[str, float]:
+        """Test memory usage patterns"""
+        import psutil
+        
+        process = psutil.Process()
+        baseline_memory = process.memory_info().rss / 1024 / 1024  # MB
+        
+        graph = graph_factory()
+        after_creation_memory = process.memory_info().rss / 1024 / 1024
+        
+        # Run multiple iterations
+        test_state = {"data": ["item"] * 100}
+        peak_memory = after_creation_memory
+        
+        for _ in range(10):
+            graph.invoke(test_state)
+            current_memory = process.memory_info().rss / 1024 / 1024
+            peak_memory = max(peak_memory, current_memory)
+        
+        final_memory = process.memory_info().rss / 1024 / 1024
+        
+        return {
+            "baseline_memory_mb": baseline_memory,
+            "after_creation_memory_mb": after_creation_memory,
+            "peak_memory_mb": peak_memory,
+            "final_memory_mb": final_memory,
+            "memory_increase_mb": final_memory - baseline_memory
+        }
+    
+    def test_concurrency(self, graph_factory: callable, num_threads: int = 10) -> Dict[str, Any]:
+        """Test concurrent execution"""
+        import threading
+        
+        results = []
+        errors = []
+        
+        def worker():
+            try:
+                graph = graph_factory()
+                test_state = {"data": ["concurrent_item"] * 5}
+                
+                start_time = time.time()
+                result = graph.invoke(test_state)
+                execution_time = time.time() - start_time
+                
+                results.append(execution_time)
+            except Exception as e:
+                errors.append(str(e))
+        
+        # Start threads
+        threads = []
+        start_time = time.time()
+        
+        for _ in range(num_threads):
+            thread = threading.Thread(target=worker)
+            thread.start()
+            threads.append(thread)
+        
+        # Wait for completion
+        for thread in threads:
+            thread.join()
+        
+        total_time = time.time() - start_time
+        
+        return {
+            "num_threads": num_threads,
+            "successful_executions": len(results),
+            "failed_executions": len(errors),
+            "total_time_seconds": total_time,
+            "average_execution_time": sum(results) / len(results) if results else 0,
+            "errors": errors[:5]  # First 5 errors only
+        }
+    
+    def test_stress_limits(self, graph_factory: callable) -> Dict[str, Any]:
+        """Test system limits under stress"""
+        graph = graph_factory()
+        
+        # Test with increasing load
+        stress_results = []
+        
+        for load_size in [10, 50, 100, 500, 1000]:
+            test_state = {"data": ["stress_item"] * load_size}
+            
+            try:
+                start_time = time.time()
+                result = graph.invoke(test_state)
+                execution_time = time.time() - start_time
+                
+                stress_results.append({
+                    "load_size": load_size,
+                    "execution_time": execution_time,
+                    "success": True
+                })
+                
+            except Exception as e:
+                stress_results.append({
+                    "load_size": load_size,
+                    "error": str(e),
+                    "success": False
+                })
+                break  # Stop at first failure
+        
+        return {
+            "max_successful_load": max([r["load_size"] for r in stress_results if r["success"]], default=0),
+            "stress_test_results": stress_results
+        }
+    
+    def print_performance_summary(self, results: Dict[str, Any]):
+        """Print formatted performance summary"""
+        print("\n" + "=" * 60)
+        print("PERFORMANCE TEST SUMMARY")
+        print("=" * 60)
+        
+        # Latency results
+        latency = results["latency"]
+        print(f"\n📊 LATENCY METRICS:")
+        print(f"   Mean: {latency['mean_latency_ms']:.2f} ms")
+        print(f"   P95:  {latency['p95_latency_ms']:.2f} ms")
+        print(f"   P99:  {latency['p99_latency_ms']:.2f} ms")
+        
+        # Throughput results
+        throughput = results["throughput"]
+        print(f"\n🚀 THROUGHPUT METRICS:")
+        print(f"   Rate: {throughput['throughput_tasks_per_second']:.2f} tasks/sec")
+        print(f"   Completed: {throughput['total_tasks_completed']} tasks")
+        
+        # Memory results
+        memory = results["memory"]
+        print(f"\n💾 MEMORY USAGE:")
+        print(f"   Peak: {memory['peak_memory_mb']:.1f} MB")
+        print(f"   Increase: {memory['memory_increase_mb']:.1f} MB")
+        
+        # Concurrency results
+        concurrency = results["concurrency"]
+        print(f"\n🔄 CONCURRENCY TEST:")
+        print(f"   Success Rate: {concurrency['successful_executions']}/{concurrency['num_threads']}")
+        print(f"   Avg Time: {concurrency['average_execution_time']:.3f} sec")
+        
+        # Stress results
+        stress = results["stress"]
+        print(f"\n⚡ STRESS TEST:")
+        print(f"   Max Load: {stress['max_successful_load']} items")
+        
+        print("\n" + "=" * 60)
+
+# Example usage
+if __name__ == "__main__":
+    def create_optimized_test_graph():
+        graph = StateGraph(OptimizedState)
+        graph.add_node("cached_node", CachedProcessingNode(NodeConfig("cached")))
+        graph.add_node("parallel_node", ParallelProcessingNode(NodeConfig("parallel")))
+        graph.add_edge(START, "cached_node")
+        graph.add_edge("cached_node", "parallel_node")
+        graph.add_edge("parallel_node", END)
+        return graph.compile()
+    
+    # Run performance tests
+    test_suite = PerformanceTestSuite()
+    results = test_suite.run_all_tests(create_optimized_test_graph)
+    
+    # Save results to file
+    import json
+    with open(f"performance_results_{int(time.time())}.json", "w") as f:
+        json.dump(results, f, indent=2)
+```
+
+---
+
+## 15. Production Deployment Examples
 
 ### 13.1 Docker Containerization
 
@@ -4497,7 +11330,1441 @@ jobs:
         kubectl get pods -l app=langgraph-app
 ```
 
-## Chapter 14: Debugging and Troubleshooting
+---
+
+## 16. Monitoring and Observability
+
+Comprehensive monitoring and observability are essential for production LangGraph applications. This section covers metrics collection, logging strategies, distributed tracing, alerting, and performance monitoring.
+
+### 16.1 Metrics Collection and Monitoring
+
+#### Prometheus Integration
+
+```python
+from prometheus_client import Counter, Histogram, Gauge, start_http_server, CollectorRegistry
+from typing import TypedDict, Dict, Any
+import time
+from datetime import datetime
+from functools import wraps
+
+# Define Prometheus metrics
+REGISTRY = CollectorRegistry()
+
+# Node execution metrics
+NODE_EXECUTIONS = Counter(
+    'langgraph_node_executions_total',
+    'Total number of node executions',
+    ['node_name', 'status'],
+    registry=REGISTRY
+)
+
+NODE_DURATION = Histogram(
+    'langgraph_node_duration_seconds',
+    'Time spent executing nodes',
+    ['node_name'],
+    registry=REGISTRY
+)
+
+# Graph execution metrics
+GRAPH_EXECUTIONS = Counter(
+    'langgraph_graph_executions_total',
+    'Total number of graph executions',
+    ['graph_name', 'status'],
+    registry=REGISTRY
+)
+
+GRAPH_DURATION = Histogram(
+    'langgraph_graph_duration_seconds',
+    'Time spent executing graphs',
+    ['graph_name'],
+    registry=REGISTRY
+)
+
+# System metrics
+ACTIVE_GRAPHS = Gauge(
+    'langgraph_active_graphs',
+    'Number of currently executing graphs',
+    registry=REGISTRY
+)
+
+MEMORY_USAGE = Gauge(
+    'langgraph_memory_usage_bytes',
+    'Memory usage of the application',
+    registry=REGISTRY
+)
+
+class MetricsCollector:
+    """Collects and exports metrics for LangGraph applications"""
+    
+    def __init__(self, metrics_port: int = 8000):
+        self.metrics_port = metrics_port
+        self._active_graphs = 0
+    
+    def start_metrics_server(self):
+        """Start Prometheus metrics server"""
+        start_http_server(self.metrics_port, registry=REGISTRY)
+        print(f"Metrics server started on port {self.metrics_port}")
+    
+    def record_node_execution(self, node_name: str, duration: float, status: str):
+        """Record node execution metrics"""
+        NODE_EXECUTIONS.labels(node_name=node_name, status=status).inc()
+        NODE_DURATION.labels(node_name=node_name).observe(duration)
+    
+    def record_graph_execution(self, graph_name: str, duration: float, status: str):
+        """Record graph execution metrics"""
+        GRAPH_EXECUTIONS.labels(graph_name=graph_name, status=status).inc()
+        GRAPH_DURATION.labels(graph_name=graph_name).observe(duration)
+    
+    def increment_active_graphs(self):
+        """Increment active graph counter"""
+        self._active_graphs += 1
+        ACTIVE_GRAPHS.set(self._active_graphs)
+    
+    def decrement_active_graphs(self):
+        """Decrement active graph counter"""
+        self._active_graphs = max(0, self._active_graphs - 1)
+        ACTIVE_GRAPHS.set(self._active_graphs)
+    
+    def update_memory_usage(self):
+        """Update memory usage metric"""
+        import psutil
+        memory_bytes = psutil.Process().memory_info().rss
+        MEMORY_USAGE.set(memory_bytes)
+
+# Decorator for automatic metrics collection
+def collect_metrics(metrics_collector: MetricsCollector):
+    """Decorator for collecting metrics on graph/node execution"""
+    
+    def decorator(func):
+        @wraps(func)
+        def wrapper(*args, **kwargs):
+            start_time = time.time()
+            status = "success"
+            
+            # Increment active counter for graphs
+            if hasattr(func, '__name__') and 'graph' in func.__name__.lower():
+                metrics_collector.increment_active_graphs()
+            
+            try:
+                result = wrapper(*args, **kwargs)
+                return result
+                
+            except Exception as e:
+                status = "error"
+                raise
+                
+            finally:
+                duration = time.time() - start_time
+                
+                # Record metrics based on function type
+                if hasattr(func, '__name__'):
+                    if 'node' in func.__name__.lower():
+                        metrics_collector.record_node_execution(
+                            func.__name__, duration, status
+                        )
+                    elif 'graph' in func.__name__.lower():
+                        metrics_collector.record_graph_execution(
+                            func.__name__, duration, status
+                        )
+                        metrics_collector.decrement_active_graphs()
+                
+                # Update system metrics
+                metrics_collector.update_memory_usage()
+        
+        return wrapper
+    return decorator
+
+# Monitored node base class
+class MonitoredNode(BaseNode):
+    """Base node class with built-in monitoring"""
+    
+    def __init__(self, config: NodeConfig, metrics_collector: MetricsCollector):
+        super().__init__(config)
+        self.metrics_collector = metrics_collector
+    
+    def __call__(self, state: TypedDict) -> TypedDict:
+        """Execute node with metrics collection"""
+        start_time = time.time()
+        status = "success"
+        
+        try:
+            result = super().__call__(state)
+            return result
+            
+        except Exception as e:
+            status = "error"
+            raise
+            
+        finally:
+            duration = time.time() - start_time
+            self.metrics_collector.record_node_execution(
+                self.config.name, duration, status
+            )
+
+# Example usage
+def setup_monitoring():
+    """Set up monitoring for LangGraph application"""
+    metrics_collector = MetricsCollector(metrics_port=8000)
+    metrics_collector.start_metrics_server()
+    
+    return metrics_collector
+```
+
+#### Custom Metrics Dashboard
+
+```python
+import json
+import sqlite3
+from typing import List, Dict, Any
+from dataclasses import dataclass, asdict
+from datetime import datetime, timedelta
+
+@dataclass
+class MetricPoint:
+    """A single metric data point"""
+    metric_name: str
+    value: float
+    labels: Dict[str, str]
+    timestamp: datetime
+
+class MetricsStore:
+    """Storage backend for custom metrics"""
+    
+    def __init__(self, db_path: str = "metrics.db"):
+        self.db_path = db_path
+        self._init_database()
+    
+    def _init_database(self):
+        """Initialize metrics database"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS metrics (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                metric_name TEXT NOT NULL,
+                value REAL NOT NULL,
+                labels TEXT NOT NULL,
+                timestamp TEXT NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+        
+        # Create index for faster queries
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_metrics_name_time 
+            ON metrics(metric_name, timestamp)
+        """)
+        
+        conn.commit()
+        conn.close()
+    
+    def store_metric(self, metric: MetricPoint):
+        """Store a metric point"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        cursor.execute("""
+            INSERT INTO metrics (metric_name, value, labels, timestamp)
+            VALUES (?, ?, ?, ?)
+        """, (
+            metric.metric_name,
+            metric.value,
+            json.dumps(metric.labels),
+            metric.timestamp.isoformat()
+        ))
+        
+        conn.commit()
+        conn.close()
+    
+    def get_metrics(
+        self, 
+        metric_name: str, 
+        start_time: datetime, 
+        end_time: datetime,
+        labels: Dict[str, str] = None
+    ) -> List[MetricPoint]:
+        """Retrieve metrics within time range"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        
+        query = """
+            SELECT metric_name, value, labels, timestamp
+            FROM metrics
+            WHERE metric_name = ? AND timestamp BETWEEN ? AND ?
+        """
+        params = [metric_name, start_time.isoformat(), end_time.isoformat()]
+        
+        if labels:
+            # Simple label filtering (in production, use proper JSON queries)
+            query += " AND labels LIKE ?"
+            params.append(f"%{list(labels.items())[0][0]}%")
+        
+        cursor.execute(query, params)
+        rows = cursor.fetchall()
+        conn.close()
+        
+        metrics = []
+        for row in rows:
+            metrics.append(MetricPoint(
+                metric_name=row[0],
+                value=row[1],
+                labels=json.loads(row[2]),
+                timestamp=datetime.fromisoformat(row[3])
+            ))
+        
+        return metrics
+    
+    def get_metric_summary(self, metric_name: str, hours: int = 24) -> Dict[str, Any]:
+        """Get summary statistics for a metric"""
+        end_time = datetime.now()
+        start_time = end_time - timedelta(hours=hours)
+        
+        metrics = self.get_metrics(metric_name, start_time, end_time)
+        
+        if not metrics:
+            return {"count": 0, "min": 0, "max": 0, "avg": 0}
+        
+        values = [m.value for m in metrics]
+        
+        return {
+            "count": len(values),
+            "min": min(values),
+            "max": max(values),
+            "avg": sum(values) / len(values),
+            "latest": values[-1] if values else 0,
+            "start_time": start_time.isoformat(),
+            "end_time": end_time.isoformat()
+        }
+
+class DashboardGenerator:
+    """Generate monitoring dashboards"""
+    
+    def __init__(self, metrics_store: MetricsStore):
+        self.metrics_store = metrics_store
+    
+    def generate_dashboard_data(self) -> Dict[str, Any]:
+        """Generate complete dashboard data"""
+        
+        # Get summaries for key metrics
+        node_executions = self.metrics_store.get_metric_summary("node_executions")
+        graph_executions = self.metrics_store.get_metric_summary("graph_executions")
+        response_times = self.metrics_store.get_metric_summary("response_time_ms")
+        error_rates = self.metrics_store.get_metric_summary("error_rate")
+        
+        # Get recent performance data
+        end_time = datetime.now()
+        start_time = end_time - timedelta(hours=1)
+        
+        recent_response_times = self.metrics_store.get_metrics(
+            "response_time_ms", start_time, end_time
+        )
+        
+        return {
+            "overview": {
+                "node_executions": node_executions,
+                "graph_executions": graph_executions,
+                "response_times": response_times,
+                "error_rates": error_rates
+            },
+            "recent_performance": [
+                {
+                    "timestamp": m.timestamp.isoformat(),
+                    "value": m.value,
+                    "labels": m.labels
+                }
+                for m in recent_response_times
+            ],
+            "generated_at": datetime.now().isoformat()
+        }
+    
+    def generate_html_dashboard(self) -> str:
+        """Generate HTML dashboard"""
+        dashboard_data = self.generate_dashboard_data()
+        
+        html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>LangGraph Monitoring Dashboard</title>
+            <style>
+                body {{ font-family: Arial, sans-serif; margin: 20px; }}
+                .metric-card {{ 
+                    border: 1px solid #ccc; 
+                    padding: 15px; 
+                    margin: 10px; 
+                    display: inline-block; 
+                    min-width: 200px; 
+                }}
+                .metric-value {{ font-size: 24px; font-weight: bold; }}
+                .metric-label {{ color: #666; }}
+            </style>
+        </head>
+        <body>
+            <h1>LangGraph Monitoring Dashboard</h1>
+            <p>Generated at: {dashboard_data['generated_at']}</p>
+            
+            <h2>Overview (Last 24 Hours)</h2>
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Node Executions</div>
+                    <div class="metric-value">{dashboard_data['overview']['node_executions']['count']}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Graph Executions</div>
+                    <div class="metric-value">{dashboard_data['overview']['graph_executions']['count']}</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Avg Response Time</div>
+                    <div class="metric-value">{dashboard_data['overview']['response_times']['avg']:.2f}ms</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Error Rate</div>
+                    <div class="metric-value">{dashboard_data['overview']['error_rates']['avg']:.2f}%</div>
+                </div>
+            </div>
+            
+            <h2>Recent Performance (Last Hour)</h2>
+            <div id="performance-chart">
+                <!-- In a real implementation, you'd add a charting library here -->
+                <p>Recent performance data points: {len(dashboard_data['recent_performance'])}</p>
+            </div>
+        </body>
+        </html>
+        """
+        
+        return html
+```
+
+### 16.2 Structured Logging
+
+#### Comprehensive Logging Strategy
+
+```python
+import logging
+import json
+import sys
+from typing import Dict, Any, Optional
+from datetime import datetime
+import traceback
+from enum import Enum
+
+class LogLevel(Enum):
+    DEBUG = "DEBUG"
+    INFO = "INFO"
+    WARNING = "WARNING"
+    ERROR = "ERROR"
+    CRITICAL = "CRITICAL"
+
+class StructuredLogger:
+    """Structured logger for LangGraph applications"""
+    
+    def __init__(self, name: str, level: LogLevel = LogLevel.INFO):
+        self.name = name
+        self.logger = logging.getLogger(name)
+        self.logger.setLevel(getattr(logging, level.value))
+        
+        # Remove existing handlers
+        for handler in self.logger.handlers[:]:
+            self.logger.removeHandler(handler)
+        
+        # Add structured JSON handler
+        handler = logging.StreamHandler(sys.stdout)
+        handler.setFormatter(StructuredFormatter())
+        self.logger.addHandler(handler)
+    
+    def _log_structured(
+        self, 
+        level: LogLevel, 
+        message: str, 
+        **context: Any
+    ):
+        """Log structured message with context"""
+        extra = {
+            'structured_context': context,
+            'logger_name': self.name,
+            'timestamp': datetime.now().isoformat()
+        }
+        
+        getattr(self.logger, level.value.lower())(message, extra=extra)
+    
+    def info(self, message: str, **context):
+        """Log info message"""
+        self._log_structured(LogLevel.INFO, message, **context)
+    
+    def debug(self, message: str, **context):
+        """Log debug message"""
+        self._log_structured(LogLevel.DEBUG, message, **context)
+    
+    def warning(self, message: str, **context):
+        """Log warning message"""
+        self._log_structured(LogLevel.WARNING, message, **context)
+    
+    def error(self, message: str, error: Optional[Exception] = None, **context):
+        """Log error message with optional exception details"""
+        if error:
+            context.update({
+                'error_type': type(error).__name__,
+                'error_message': str(error),
+                'traceback': traceback.format_exc()
+            })
+        self._log_structured(LogLevel.ERROR, message, **context)
+    
+    def critical(self, message: str, **context):
+        """Log critical message"""
+        self._log_structured(LogLevel.CRITICAL, message, **context)
+
+class StructuredFormatter(logging.Formatter):
+    """JSON formatter for structured logs"""
+    
+    def format(self, record):
+        """Format log record as JSON"""
+        log_data = {
+            'timestamp': datetime.fromtimestamp(record.created).isoformat(),
+            'level': record.levelname,
+            'logger': record.name,
+            'message': record.getMessage(),
+            'module': record.module,
+            'function': record.funcName,
+            'line': record.lineno
+        }
+        
+        # Add structured context if available
+        if hasattr(record, 'structured_context'):
+            log_data['context'] = record.structured_context
+        
+        # Add exception info if present
+        if record.exc_info:
+            log_data['exception'] = self.formatException(record.exc_info)
+        
+        return json.dumps(log_data, default=str)
+
+class GraphExecutionLogger:
+    """Specialized logger for graph execution tracking"""
+    
+    def __init__(self, logger: StructuredLogger):
+        self.logger = logger
+    
+    def log_graph_start(self, graph_name: str, initial_state: Dict[str, Any], config: Dict[str, Any] = None):
+        """Log graph execution start"""
+        self.logger.info(
+            "Graph execution started",
+            graph_name=graph_name,
+            state_keys=list(initial_state.keys()),
+            config=config or {},
+            event_type="graph_start"
+        )
+    
+    def log_node_execution(
+        self, 
+        graph_name: str, 
+        node_name: str, 
+        execution_time_ms: float,
+        input_keys: List[str], 
+        output_keys: List[str],
+        status: str = "success",
+        error: str = None
+    ):
+        """Log node execution details"""
+        self.logger.info(
+            f"Node '{node_name}' executed",
+            graph_name=graph_name,
+            node_name=node_name,
+            execution_time_ms=execution_time_ms,
+            input_keys=input_keys,
+            output_keys=output_keys,
+            status=status,
+            error=error,
+            event_type="node_execution"
+        )
+    
+    def log_graph_completion(
+        self, 
+        graph_name: str, 
+        total_execution_time_ms: float,
+        nodes_executed: int,
+        final_state_keys: List[str],
+        status: str = "success"
+    ):
+        """Log graph execution completion"""
+        self.logger.info(
+            "Graph execution completed",
+            graph_name=graph_name,
+            total_execution_time_ms=total_execution_time_ms,
+            nodes_executed=nodes_executed,
+            final_state_keys=final_state_keys,
+            status=status,
+            event_type="graph_completion"
+        )
+    
+    def log_graph_error(self, graph_name: str, error: Exception, context: Dict[str, Any] = None):
+        """Log graph execution error"""
+        self.logger.error(
+            f"Graph execution failed: {graph_name}",
+            error=error,
+            graph_name=graph_name,
+            context=context or {},
+            event_type="graph_error"
+        )
+
+# Enhanced node with logging
+class LoggingNode(BaseNode):
+    """Node with comprehensive logging"""
+    
+    def __init__(self, config: NodeConfig, logger: StructuredLogger):
+        super().__init__(config)
+        self.logger = logger
+        self.execution_logger = GraphExecutionLogger(logger)
+    
+    def __call__(self, state: TypedDict) -> TypedDict:
+        """Execute node with comprehensive logging"""
+        start_time = time.time()
+        input_keys = list(state.keys())
+        
+        try:
+            self.logger.debug(
+                f"Starting node execution: {self.config.name}",
+                node_name=self.config.name,
+                input_keys=input_keys,
+                state_size_bytes=sys.getsizeof(str(state))
+            )
+            
+            result = self.execute(state)
+            
+            execution_time_ms = (time.time() - start_time) * 1000
+            output_keys = list(result.keys())
+            
+            self.execution_logger.log_node_execution(
+                graph_name="unknown",  # Would need to be passed in
+                node_name=self.config.name,
+                execution_time_ms=execution_time_ms,
+                input_keys=input_keys,
+                output_keys=output_keys,
+                status="success"
+            )
+            
+            return result
+            
+        except Exception as e:
+            execution_time_ms = (time.time() - start_time) * 1000
+            
+            self.execution_logger.log_node_execution(
+                graph_name="unknown",
+                node_name=self.config.name,
+                execution_time_ms=execution_time_ms,
+                input_keys=input_keys,
+                output_keys=[],
+                status="error",
+                error=str(e)
+            )
+            
+            raise
+```
+
+### 16.3 Distributed Tracing
+
+#### OpenTelemetry Integration
+
+```python
+from opentelemetry import trace
+from opentelemetry.exporter.jaeger.thrift import JaegerExporter
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.trace import Status, StatusCode
+from typing import TypedDict, Dict, Any, Optional
+import time
+from functools import wraps
+
+class TracingConfig:
+    """Configuration for distributed tracing"""
+    
+    def __init__(
+        self,
+        service_name: str = "langgraph-app",
+        jaeger_endpoint: str = "http://localhost:14268/api/traces",
+        enable_tracing: bool = True
+    ):
+        self.service_name = service_name
+        self.jaeger_endpoint = jaeger_endpoint
+        self.enable_tracing = enable_tracing
+
+class DistributedTracer:
+    """Distributed tracing for LangGraph applications"""
+    
+    def __init__(self, config: TracingConfig):
+        self.config = config
+        self.tracer = None
+        
+        if config.enable_tracing:
+            self._setup_tracing()
+    
+    def _setup_tracing(self):
+        """Set up OpenTelemetry tracing"""
+        # Create resource
+        resource = Resource.create({
+            "service.name": self.config.service_name,
+            "service.version": "1.0.0"
+        })
+        
+        # Set tracer provider
+        trace.set_tracer_provider(TracerProvider(resource=resource))
+        
+        # Create Jaeger exporter
+        jaeger_exporter = JaegerExporter(
+            agent_host_name="localhost",
+            agent_port=6831,
+        )
+        
+        # Add span processor
+        span_processor = BatchSpanProcessor(jaeger_exporter)
+        trace.get_tracer_provider().add_span_processor(span_processor)
+        
+        # Get tracer
+        self.tracer = trace.get_tracer(__name__)
+    
+    def trace_graph_execution(self, graph_name: str):
+        """Decorator for tracing graph execution"""
+        def decorator(func):
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                if not self.config.enable_tracing:
+                    return func(*args, **kwargs)
+                
+                with self.tracer.start_as_current_span(
+                    f"graph.{graph_name}",
+                    attributes={
+                        "graph.name": graph_name,
+                        "operation.type": "graph_execution"
+                    }
+                ) as span:
+                    try:
+                        start_time = time.time()
+                        result = func(*args, **kwargs)
+                        
+                        # Add success attributes
+                        span.set_attribute("execution.duration_ms", (time.time() - start_time) * 1000)
+                        span.set_attribute("execution.status", "success")
+                        span.set_status(Status(StatusCode.OK))
+                        
+                        return result
+                        
+                    except Exception as e:
+                        # Record error
+                        span.record_exception(e)
+                        span.set_attribute("execution.status", "error")
+                        span.set_attribute("error.message", str(e))
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                        
+                        raise
+            
+            return wrapper
+        return decorator
+    
+    def trace_node_execution(self, node_name: str):
+        """Decorator for tracing node execution"""
+        def decorator(func):
+            @wraps(func)
+            def wrapper(*args, **kwargs):
+                if not self.config.enable_tracing:
+                    return func(*args, **kwargs)
+                
+                with self.tracer.start_as_current_span(
+                    f"node.{node_name}",
+                    attributes={
+                        "node.name": node_name,
+                        "operation.type": "node_execution"
+                    }
+                ) as span:
+                    try:
+                        # Extract state information if available
+                        if args and isinstance(args[0], dict):
+                            state = args[0]
+                            span.set_attribute("state.keys_count", len(state.keys()))
+                            span.set_attribute("state.size_bytes", sys.getsizeof(str(state)))
+                        
+                        start_time = time.time()
+                        result = func(*args, **kwargs)
+                        
+                        # Add success attributes
+                        execution_time = (time.time() - start_time) * 1000
+                        span.set_attribute("execution.duration_ms", execution_time)
+                        span.set_attribute("execution.status", "success")
+                        
+                        if isinstance(result, dict):
+                            span.set_attribute("result.keys_count", len(result.keys()))
+                        
+                        span.set_status(Status(StatusCode.OK))
+                        return result
+                        
+                    except Exception as e:
+                        span.record_exception(e)
+                        span.set_attribute("execution.status", "error")
+                        span.set_status(Status(StatusCode.ERROR, str(e)))
+                        raise
+            
+            return wrapper
+        return decorator
+    
+    def create_custom_span(self, span_name: str, attributes: Dict[str, Any] = None):
+        """Create a custom span for manual tracing"""
+        if not self.config.enable_tracing:
+            return trace.NoOpTracer().start_span("noop")
+        
+        return self.tracer.start_as_current_span(
+            span_name,
+            attributes=attributes or {}
+        )
+
+# Traced node implementation
+class TracedNode(BaseNode):
+    """Node with distributed tracing"""
+    
+    def __init__(self, config: NodeConfig, tracer: DistributedTracer):
+        super().__init__(config)
+        self.tracer = tracer
+    
+    def __call__(self, state: TypedDict) -> TypedDict:
+        """Execute node with tracing"""
+        with self.tracer.create_custom_span(
+            f"node.{self.config.name}",
+            attributes={
+                "node.name": self.config.name,
+                "node.enabled": self.config.enabled,
+                "node.timeout_seconds": self.config.timeout_seconds
+            }
+        ) as span:
+            try:
+                result = self.execute(state)
+                span.set_attribute("execution.success", True)
+                return result
+            except Exception as e:
+                span.set_attribute("execution.success", False)
+                span.record_exception(e)
+                raise
+
+# Example usage
+def setup_tracing_example():
+    """Example of setting up distributed tracing"""
+    
+    # Configure tracing
+    tracing_config = TracingConfig(
+        service_name="my-langgraph-app",
+        jaeger_endpoint="http://localhost:14268/api/traces",
+        enable_tracing=True
+    )
+    
+    # Create tracer
+    tracer = DistributedTracer(tracing_config)
+    
+    # Use tracing decorators
+    @tracer.trace_graph_execution("processing_graph")
+    def execute_graph(state: Dict[str, Any]) -> Dict[str, Any]:
+        """Execute graph with tracing"""
+        
+        # Create traced nodes
+        node1 = TracedNode(NodeConfig("preprocessing"), tracer)
+        node2 = TracedNode(NodeConfig("processing"), tracer)
+        
+        # Execute with tracing
+        intermediate = node1(state)
+        result = node2(intermediate)
+        
+        return result
+    
+    return execute_graph
+```
+
+### 16.4 Alerting and Notification
+
+#### Alert Management System
+
+```python
+from typing import List, Dict, Any, Callable, Optional
+from dataclasses import dataclass
+from enum import Enum
+import smtplib
+from email.mime.text import MimeText
+from email.mime.multipart import MimeMultipart
+import json
+import time
+import threading
+from datetime import datetime, timedelta
+
+class AlertSeverity(Enum):
+    LOW = "low"
+    MEDIUM = "medium"
+    HIGH = "high"
+    CRITICAL = "critical"
+
+class AlertChannel(Enum):
+    EMAIL = "email"
+    SLACK = "slack"
+    WEBHOOK = "webhook"
+    SMS = "sms"
+
+@dataclass
+class Alert:
+    """Alert definition"""
+    name: str
+    description: str
+    severity: AlertSeverity
+    metric_name: str
+    threshold: float
+    comparison: str  # "gt", "lt", "eq", "gte", "lte"
+    duration_minutes: int  # How long condition must be true
+    channels: List[AlertChannel]
+    enabled: bool = True
+
+@dataclass
+class AlertNotification:
+    """Alert notification instance"""
+    alert: Alert
+    current_value: float
+    triggered_at: datetime
+    resolved_at: Optional[datetime] = None
+    message: str = ""
+
+class AlertManager:
+    """Manages alerts and notifications"""
+    
+    def __init__(self, metrics_store: MetricsStore):
+        self.metrics_store = metrics_store
+        self.alerts: Dict[str, Alert] = {}
+        self.active_alerts: Dict[str, AlertNotification] = {}
+        self.notification_handlers: Dict[AlertChannel, Callable] = {}
+        self.running = False
+        self.check_thread = None
+    
+    def register_alert(self, alert: Alert):
+        """Register a new alert"""
+        self.alerts[alert.name] = alert
+        self.logger.info(f"Registered alert: {alert.name}")
+    
+    def register_notification_handler(self, channel: AlertChannel, handler: Callable):
+        """Register notification handler for a channel"""
+        self.notification_handlers[channel] = handler
+    
+    def start_monitoring(self, check_interval_seconds: int = 60):
+        """Start alert monitoring"""
+        self.running = True
+        self.check_thread = threading.Thread(
+            target=self._monitoring_loop, 
+            args=(check_interval_seconds,),
+            daemon=True
+        )
+        self.check_thread.start()
+        print(f"Alert monitoring started (checking every {check_interval_seconds}s)")
+    
+    def stop_monitoring(self):
+        """Stop alert monitoring"""
+        self.running = False
+        if self.check_thread:
+            self.check_thread.join()
+        print("Alert monitoring stopped")
+    
+    def _monitoring_loop(self, check_interval: int):
+        """Main monitoring loop"""
+        while self.running:
+            try:
+                self._check_alerts()
+                time.sleep(check_interval)
+            except Exception as e:
+                print(f"Error in alert monitoring: {e}")
+    
+    def _check_alerts(self):
+        """Check all registered alerts"""
+        current_time = datetime.now()
+        
+        for alert_name, alert in self.alerts.items():
+            if not alert.enabled:
+                continue
+            
+            try:
+                # Get recent metrics for this alert
+                start_time = current_time - timedelta(minutes=alert.duration_minutes)
+                metrics = self.metrics_store.get_metrics(
+                    alert.metric_name, start_time, current_time
+                )
+                
+                if not metrics:
+                    continue
+                
+                # Check if alert condition is met
+                current_value = metrics[-1].value  # Latest value
+                condition_met = self._evaluate_condition(
+                    current_value, alert.threshold, alert.comparison
+                )
+                
+                # Handle alert state
+                if condition_met and alert_name not in self.active_alerts:
+                    # New alert
+                    notification = AlertNotification(
+                        alert=alert,
+                        current_value=current_value,
+                        triggered_at=current_time,
+                        message=f"Alert '{alert.name}' triggered: {alert.metric_name} is {current_value} (threshold: {alert.threshold})"
+                    )
+                    
+                    self.active_alerts[alert_name] = notification
+                    self._send_notifications(notification)
+                
+                elif not condition_met and alert_name in self.active_alerts:
+                    # Alert resolved
+                    notification = self.active_alerts[alert_name]
+                    notification.resolved_at = current_time
+                    notification.message = f"Alert '{alert.name}' resolved: {alert.metric_name} is {current_value}"
+                    
+                    self._send_notifications(notification)
+                    del self.active_alerts[alert_name]
+                
+            except Exception as e:
+                print(f"Error checking alert {alert_name}: {e}")
+    
+    def _evaluate_condition(self, current_value: float, threshold: float, comparison: str) -> bool:
+        """Evaluate alert condition"""
+        if comparison == "gt":
+            return current_value > threshold
+        elif comparison == "lt":
+            return current_value < threshold
+        elif comparison == "eq":
+            return current_value == threshold
+        elif comparison == "gte":
+            return current_value >= threshold
+        elif comparison == "lte":
+            return current_value <= threshold
+        else:
+            return False
+    
+    def _send_notifications(self, notification: AlertNotification):
+        """Send notifications through configured channels"""
+        for channel in notification.alert.channels:
+            handler = self.notification_handlers.get(channel)
+            if handler:
+                try:
+                    handler(notification)
+                except Exception as e:
+                    print(f"Failed to send notification via {channel.value}: {e}")
+
+# Notification handlers
+class EmailNotificationHandler:
+    """Email notification handler"""
+    
+    def __init__(self, smtp_server: str, smtp_port: int, username: str, password: str):
+        self.smtp_server = smtp_server
+        self.smtp_port = smtp_port
+        self.username = username
+        self.password = password
+    
+    def send_alert(self, notification: AlertNotification, recipients: List[str]):
+        """Send alert via email"""
+        
+        subject = f"LangGraph Alert: {notification.alert.name}"
+        
+        body = f"""
+        Alert: {notification.alert.name}
+        Severity: {notification.alert.severity.value.upper()}
+        Description: {notification.alert.description}
+        
+        Metric: {notification.alert.metric_name}
+        Current Value: {notification.current_value}
+        Threshold: {notification.alert.threshold}
+        
+        Triggered At: {notification.triggered_at.strftime('%Y-%m-%d %H:%M:%S')}
+        
+        Message: {notification.message}
+        """
+        
+        if notification.resolved_at:
+            body += f"\nResolved At: {notification.resolved_at.strftime('%Y-%m-%d %H:%M:%S')}"
+        
+        # Create email
+        msg = MimeMultipart()
+        msg['From'] = self.username
+        msg['Subject'] = subject
+        msg.attach(MimeText(body, 'plain'))
+        
+        # Send to all recipients
+        with smtplib.SMTP(self.smtp_server, self.smtp_port) as server:
+            server.starttls()
+            server.login(self.username, self.password)
+            
+            for recipient in recipients:
+                msg['To'] = recipient
+                server.sendmail(self.username, recipient, msg.as_string())
+
+class SlackNotificationHandler:
+    """Slack notification handler"""
+    
+    def __init__(self, webhook_url: str):
+        self.webhook_url = webhook_url
+    
+    def send_alert(self, notification: AlertNotification):
+        """Send alert to Slack"""
+        import requests
+        
+        color = {
+            AlertSeverity.LOW: "#36a64f",
+            AlertSeverity.MEDIUM: "#ff9500", 
+            AlertSeverity.HIGH: "#ff6b6b",
+            AlertSeverity.CRITICAL: "#ff0000"
+        }.get(notification.alert.severity, "#36a64f")
+        
+        status_emoji = "🚨" if not notification.resolved_at else "✅"
+        status_text = "TRIGGERED" if not notification.resolved_at else "RESOLVED"
+        
+        payload = {
+            "attachments": [
+                {
+                    "color": color,
+                    "title": f"{status_emoji} LangGraph Alert: {notification.alert.name}",
+                    "text": f"*Status:* {status_text}\n*Severity:* {notification.alert.severity.value.upper()}",
+                    "fields": [
+                        {
+                            "title": "Metric",
+                            "value": notification.alert.metric_name,
+                            "short": True
+                        },
+                        {
+                            "title": "Current Value",
+                            "value": str(notification.current_value),
+                            "short": True
+                        },
+                        {
+                            "title": "Threshold",
+                            "value": str(notification.alert.threshold),
+                            "short": True
+                        },
+                        {
+                            "title": "Time",
+                            "value": (notification.resolved_at or notification.triggered_at).strftime('%Y-%m-%d %H:%M:%S'),
+                            "short": True
+                        }
+                    ],
+                    "footer": "LangGraph Monitoring",
+                    "ts": int(time.time())
+                }
+            ]
+        }
+        
+        response = requests.post(self.webhook_url, json=payload)
+        response.raise_for_status()
+
+# Example alert setup
+def setup_alerts_example():
+    """Example alert configuration"""
+    
+    # Create metrics store and alert manager
+    metrics_store = MetricsStore()
+    alert_manager = AlertManager(metrics_store)
+    
+    # Configure notification handlers
+    email_handler = EmailNotificationHandler(
+        smtp_server="smtp.gmail.com",
+        smtp_port=587,
+        username="alerts@mycompany.com",
+        password="password"
+    )
+    
+    slack_handler = SlackNotificationHandler(
+        webhook_url="https://hooks.slack.com/services/YOUR/SLACK/WEBHOOK"
+    )
+    
+    # Register handlers
+    alert_manager.register_notification_handler(
+        AlertChannel.EMAIL, 
+        lambda notif: email_handler.send_alert(notif, ["team@mycompany.com"])
+    )
+    
+    alert_manager.register_notification_handler(
+        AlertChannel.SLACK,
+        slack_handler.send_alert
+    )
+    
+    # Define alerts
+    alerts = [
+        Alert(
+            name="high_response_time",
+            description="Response time is higher than normal",
+            severity=AlertSeverity.HIGH,
+            metric_name="response_time_ms",
+            threshold=5000,  # 5 seconds
+            comparison="gt",
+            duration_minutes=5,
+            channels=[AlertChannel.EMAIL, AlertChannel.SLACK]
+        ),
+        Alert(
+            name="high_error_rate",
+            description="Error rate is above acceptable threshold",
+            severity=AlertSeverity.CRITICAL,
+            metric_name="error_rate",
+            threshold=5.0,  # 5%
+            comparison="gt", 
+            duration_minutes=2,
+            channels=[AlertChannel.EMAIL, AlertChannel.SLACK]
+        ),
+        Alert(
+            name="low_throughput",
+            description="Graph execution throughput is below normal",
+            severity=AlertSeverity.MEDIUM,
+            metric_name="graphs_per_minute",
+            threshold=10,
+            comparison="lt",
+            duration_minutes=10,
+            channels=[AlertChannel.SLACK]
+        )
+    ]
+    
+    # Register alerts
+    for alert in alerts:
+        alert_manager.register_alert(alert)
+    
+    # Start monitoring
+    alert_manager.start_monitoring(check_interval_seconds=30)
+    
+    return alert_manager
+```
+
+### 16.5 Best Practices for Monitoring
+
+#### Monitoring Strategy Guidelines
+
+```python
+"""
+Monitoring and Observability Best Practices for LangGraph
+
+1. **Metrics Strategy**:
+   - Track key business metrics (throughput, latency, error rates)
+   - Monitor system metrics (CPU, memory, disk usage)
+   - Implement custom metrics for domain-specific concerns
+   - Use appropriate metric types (counters, gauges, histograms)
+   - Set up dashboards for different audiences (ops, dev, business)
+
+2. **Logging Strategy**:
+   - Use structured logging (JSON format)
+   - Include correlation IDs for distributed tracing
+   - Log at appropriate levels (DEBUG for development, INFO+ for production)
+   - Implement log aggregation and searchability
+   - Include context information in all log messages
+
+3. **Tracing Strategy**:
+   - Implement distributed tracing for multi-service architectures
+   - Trace critical execution paths
+   - Include relevant metadata in spans
+   - Use trace sampling for high-volume applications
+   - Correlate traces with logs and metrics
+
+4. **Alerting Strategy**:
+   - Alert on symptoms, not causes
+   - Use tiered alert severity levels
+   - Implement alert fatigue prevention
+   - Include runbook links in alert notifications
+   - Test alert delivery mechanisms regularly
+
+5. **Performance Monitoring**:
+   - Monitor end-to-end request latency
+   - Track resource utilization trends
+   - Set up synthetic monitoring for critical paths
+   - Implement SLA/SLO monitoring
+   - Monitor third-party dependencies
+
+6. **Security Monitoring**:
+   - Monitor authentication failures
+   - Track unusual access patterns
+   - Monitor for data exfiltration attempts
+   - Log security-relevant events
+   - Implement anomaly detection
+
+7. **Operational Guidelines**:
+   - Implement health checks at multiple levels
+   - Monitor deployment and rollback processes
+   - Track configuration changes
+   - Monitor batch job execution
+   - Implement capacity planning metrics
+"""
+
+# Complete monitoring setup example
+class ComprehensiveMonitoring:
+    """Complete monitoring solution for LangGraph applications"""
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self.metrics_collector = None
+        self.logger = None
+        self.tracer = None
+        self.alert_manager = None
+        self.dashboard_generator = None
+    
+    def initialize_monitoring(self):
+        """Initialize all monitoring components"""
+        
+        # Set up metrics collection
+        self.metrics_collector = MetricsCollector(
+            metrics_port=self.config.get('metrics_port', 8000)
+        )
+        self.metrics_collector.start_metrics_server()
+        
+        # Set up structured logging
+        self.logger = StructuredLogger(
+            name=self.config.get('service_name', 'langgraph-app'),
+            level=LogLevel[self.config.get('log_level', 'INFO')]
+        )
+        
+        # Set up distributed tracing
+        if self.config.get('enable_tracing', False):
+            tracing_config = TracingConfig(
+                service_name=self.config.get('service_name', 'langgraph-app'),
+                jaeger_endpoint=self.config.get('jaeger_endpoint'),
+                enable_tracing=True
+            )
+            self.tracer = DistributedTracer(tracing_config)
+        
+        # Set up metrics storage and alerting
+        metrics_store = MetricsStore(self.config.get('metrics_db', 'metrics.db'))
+        self.alert_manager = AlertManager(metrics_store)
+        
+        # Set up dashboard
+        self.dashboard_generator = DashboardGenerator(metrics_store)
+        
+        print("Comprehensive monitoring initialized")
+    
+    def create_monitored_node(self, config: NodeConfig) -> BaseNode:
+        """Create a fully monitored node"""
+        
+        # Start with base monitoring capabilities
+        if self.tracer:
+            node = TracedNode(config, self.tracer)
+        else:
+            node = LoggingNode(config, self.logger)
+        
+        # Add metrics collection
+        if self.metrics_collector:
+            original_call = node.__call__
+            
+            @collect_metrics(self.metrics_collector)
+            def monitored_call(state):
+                return original_call(state)
+            
+            node.__call__ = monitored_call
+        
+        return node
+    
+    def get_monitoring_middleware(self):
+        """Get middleware for request monitoring"""
+        def middleware(request, call_next):
+            start_time = time.time()
+            
+            # Log request start
+            self.logger.info(
+                "Request started",
+                method=request.method,
+                url=str(request.url),
+                client_ip=request.client.host
+            )
+            
+            try:
+                response = call_next(request)
+                duration = time.time() - start_time
+                
+                # Log successful response
+                self.logger.info(
+                    "Request completed",
+                    method=request.method,
+                    url=str(request.url),
+                    status_code=response.status_code,
+                    duration_ms=duration * 1000
+                )
+                
+                # Record metrics
+                if self.metrics_collector:
+                    self.metrics_collector.record_request(
+                        method=request.method,
+                        status_code=response.status_code,
+                        duration=duration
+                    )
+                
+                return response
+                
+            except Exception as e:
+                duration = time.time() - start_time
+                
+                # Log error
+                self.logger.error(
+                    "Request failed",
+                    method=request.method,
+                    url=str(request.url),
+                    error=e,
+                    duration_ms=duration * 1000
+                )
+                
+                raise
+        
+        return middleware
+    
+    def generate_health_report(self) -> Dict[str, Any]:
+        """Generate comprehensive health report"""
+        
+        report = {
+            "timestamp": datetime.now().isoformat(),
+            "service": self.config.get('service_name', 'langgraph-app'),
+            "version": self.config.get('version', '1.0.0'),
+            "status": "healthy",
+            "checks": {}
+        }
+        
+        # Check metrics collection
+        try:
+            self.metrics_collector.update_memory_usage()
+            report["checks"]["metrics"] = {"status": "healthy", "message": "Metrics collection active"}
+        except Exception as e:
+            report["checks"]["metrics"] = {"status": "unhealthy", "message": str(e)}
+            report["status"] = "degraded"
+        
+        # Check logging
+        try:
+            self.logger.debug("Health check test log")
+            report["checks"]["logging"] = {"status": "healthy", "message": "Logging system active"}
+        except Exception as e:
+            report["checks"]["logging"] = {"status": "unhealthy", "message": str(e)}
+            report["status"] = "degraded"
+        
+        # Check alerting
+        try:
+            active_alerts = len(self.alert_manager.active_alerts) if self.alert_manager else 0
+            report["checks"]["alerting"] = {
+                "status": "healthy", 
+                "message": f"{active_alerts} active alerts",
+                "active_alerts": active_alerts
+            }
+        except Exception as e:
+            report["checks"]["alerting"] = {"status": "unhealthy", "message": str(e)}
+            report["status"] = "degraded"
+        
+        return report
+
+# Usage example
+def setup_comprehensive_monitoring():
+    """Set up comprehensive monitoring for LangGraph application"""
+    
+    config = {
+        'service_name': 'my-langgraph-app',
+        'metrics_port': 8000,
+        'log_level': 'INFO',
+        'enable_tracing': True,
+        'jaeger_endpoint': 'http://localhost:14268/api/traces',
+        'metrics_db': 'metrics.db',
+        'version': '1.0.0'
+    }
+    
+    monitoring = ComprehensiveMonitoring(config)
+    monitoring.initialize_monitoring()
+    
+    return monitoring
+```
+
+---
+
+## 17. Troubleshooting
 
 ### 14.1 Common Issues and Solutions
 
@@ -5774,6 +14041,1629 @@ def setup_production_monitoring():
     health_monitor = HealthCheckMonitor(alert_manager)
     
     return alert_manager, health_monitor
+```
+
+---
+
+## 18. Migration Patterns
+
+### 18.1 Legacy System Migration
+
+#### From Sequential to Graph-Based Processing
+
+```python
+# src/migration/legacy_adapter.py
+from typing import Any, Dict, List, Optional
+from abc import ABC, abstractmethod
+from langgraph.graph import StateGraph, START, END
+from langgraph.graph.message import add_messages
+from langgraph.checkpoint.memory import MemorySaver
+import logging
+
+class LegacySystemAdapter(ABC):
+    """Base adapter for migrating legacy systems to LangGraph"""
+    
+    @abstractmethod
+    def extract_workflow_steps(self) -> List[Dict[str, Any]]:
+        """Extract workflow steps from legacy system"""
+        pass
+    
+    @abstractmethod
+    def map_data_formats(self, legacy_data: Any) -> Dict[str, Any]:
+        """Map legacy data formats to LangGraph state"""
+        pass
+
+class SequentialProcessorAdapter(LegacySystemAdapter):
+    """Adapter for sequential processing systems"""
+    
+    def __init__(self, legacy_processor):
+        self.legacy_processor = legacy_processor
+        self.logger = logging.getLogger(__name__)
+        
+    def extract_workflow_steps(self) -> List[Dict[str, Any]]:
+        """Extract steps from sequential processor"""
+        steps = []
+        
+        # Map legacy processor methods to graph nodes
+        for method_name in dir(self.legacy_processor):
+            if method_name.startswith('process_'):
+                steps.append({
+                    'name': method_name,
+                    'type': 'processing',
+                    'function': getattr(self.legacy_processor, method_name),
+                    'dependencies': self._extract_dependencies(method_name)
+                })
+        
+        return steps
+    
+    def map_data_formats(self, legacy_data: Any) -> Dict[str, Any]:
+        """Map legacy data to graph state"""
+        if hasattr(legacy_data, '__dict__'):
+            # Object to dict conversion
+            return {
+                'input_data': legacy_data.__dict__,
+                'processing_stage': 'initial',
+                'results': [],
+                'metadata': {
+                    'source': 'legacy_system',
+                    'original_type': type(legacy_data).__name__
+                }
+            }
+        else:
+            # Simple data types
+            return {
+                'input_data': legacy_data,
+                'processing_stage': 'initial',
+                'results': [],
+                'metadata': {'source': 'legacy_system'}
+            }
+    
+    def _extract_dependencies(self, method_name: str) -> List[str]:
+        """Extract method dependencies (simplified)"""
+        # In real implementation, use AST parsing or inspection
+        dependency_map = {
+            'process_input': [],
+            'process_validation': ['process_input'],
+            'process_transformation': ['process_validation'],
+            'process_output': ['process_transformation']
+        }
+        return dependency_map.get(method_name, [])
+
+class MigrationManager:
+    """Manages the migration process"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.migration_state = {}
+    
+    def create_parallel_system(self, adapter: LegacySystemAdapter) -> StateGraph:
+        """Create parallel LangGraph system"""
+        
+        # Extract workflow from legacy system
+        steps = adapter.extract_workflow_steps()
+        
+        # Create graph
+        graph = StateGraph(Dict[str, Any])
+        
+        # Add nodes for each step
+        for step in steps:
+            node_func = self._create_node_function(step, adapter)
+            graph.add_node(step['name'], node_func)
+        
+        # Add edges based on dependencies
+        for step in steps:
+            if not step['dependencies']:
+                graph.add_edge(START, step['name'])
+            else:
+                for dep in step['dependencies']:
+                    graph.add_edge(dep, step['name'])
+        
+        # Add final edge
+        final_nodes = [s['name'] for s in steps if not any(
+            s['name'] in other['dependencies'] for other in steps
+        )]
+        
+        for final_node in final_nodes:
+            graph.add_edge(final_node, END)
+        
+        return graph.compile(checkpointer=MemorySaver())
+    
+    def _create_node_function(self, step: Dict[str, Any], adapter: LegacySystemAdapter):
+        """Create node function from legacy step"""
+        
+        def node_function(state: Dict[str, Any]) -> Dict[str, Any]:
+            try:
+                # Map state to legacy format
+                legacy_input = self._state_to_legacy_format(state, step)
+                
+                # Execute legacy function
+                result = step['function'](legacy_input)
+                
+                # Map result back to state
+                updated_state = adapter.map_data_formats(result)
+                
+                # Merge with existing state
+                return {
+                    **state,
+                    'results': state.get('results', []) + [result],
+                    'processing_stage': step['name'],
+                    'last_updated': step['name']
+                }
+                
+            except Exception as e:
+                self.logger.error(f"Error in {step['name']}: {e}")
+                return {
+                    **state,
+                    'error': str(e),
+                    'failed_step': step['name']
+                }
+        
+        return node_function
+    
+    def _state_to_legacy_format(self, state: Dict[str, Any], step: Dict[str, Any]) -> Any:
+        """Convert graph state to legacy format"""
+        # This would be customized based on legacy system requirements
+        if 'input_data' in state:
+            return state['input_data']
+        return state
+
+# Example migration implementation
+class LegacyOrderProcessor:
+    """Example legacy order processing system"""
+    
+    def process_input(self, order_data):
+        return {'order_id': order_data.get('id'), 'status': 'received'}
+    
+    def process_validation(self, order):
+        if order.get('order_id'):
+            order['status'] = 'validated'
+        else:
+            order['status'] = 'invalid'
+        return order
+    
+    def process_transformation(self, order):
+        order['transformed_at'] = 'now'
+        order['status'] = 'processed'
+        return order
+    
+    def process_output(self, order):
+        order['status'] = 'completed'
+        return order
+
+def migrate_legacy_system():
+    """Example migration process"""
+    # Legacy system
+    legacy_processor = LegacyOrderProcessor()
+    
+    # Create adapter
+    adapter = SequentialProcessorAdapter(legacy_processor)
+    
+    # Create migration manager
+    migration_manager = MigrationManager()
+    
+    # Create parallel graph system
+    graph = migration_manager.create_parallel_system(adapter)
+    
+    return graph, legacy_processor
+```
+
+### 18.2 Data Migration Strategies
+
+#### State Schema Evolution
+
+```python
+# src/migration/schema_migration.py
+from typing import Dict, Any, Optional, List
+from dataclasses import dataclass
+from enum import Enum
+import json
+import logging
+
+class MigrationVersion(Enum):
+    V1_0 = "1.0"
+    V1_1 = "1.1"
+    V2_0 = "2.0"
+
+@dataclass
+class SchemaMigration:
+    from_version: MigrationVersion
+    to_version: MigrationVersion
+    migration_function: callable
+    rollback_function: Optional[callable] = None
+
+class StateSchemaManager:
+    """Manages state schema migrations"""
+    
+    def __init__(self):
+        self.migrations: List[SchemaMigration] = []
+        self.logger = logging.getLogger(__name__)
+        self._register_migrations()
+    
+    def _register_migrations(self):
+        """Register all available migrations"""
+        
+        # V1.0 -> V1.1: Add metadata field
+        self.migrations.append(SchemaMigration(
+            from_version=MigrationVersion.V1_0,
+            to_version=MigrationVersion.V1_1,
+            migration_function=self._migrate_v1_0_to_v1_1,
+            rollback_function=self._rollback_v1_1_to_v1_0
+        ))
+        
+        # V1.1 -> V2.0: Restructure data format
+        self.migrations.append(SchemaMigration(
+            from_version=MigrationVersion.V1_1,
+            to_version=MigrationVersion.V2_0,
+            migration_function=self._migrate_v1_1_to_v2_0,
+            rollback_function=self._rollback_v2_0_to_v1_1
+        ))
+    
+    def migrate_state(self, state: Dict[str, Any], 
+                     from_version: MigrationVersion, 
+                     to_version: MigrationVersion) -> Dict[str, Any]:
+        """Migrate state from one version to another"""
+        
+        current_state = state.copy()
+        current_version = from_version
+        
+        # Find migration path
+        migration_path = self._find_migration_path(from_version, to_version)
+        
+        if not migration_path:
+            raise ValueError(f"No migration path from {from_version} to {to_version}")
+        
+        # Apply migrations in sequence
+        for migration in migration_path:
+            try:
+                current_state = migration.migration_function(current_state)
+                current_version = migration.to_version
+                self.logger.info(f"Migrated state from {migration.from_version} to {migration.to_version}")
+            except Exception as e:
+                self.logger.error(f"Migration failed: {e}")
+                raise
+        
+        # Add version metadata
+        current_state['_schema_version'] = to_version.value
+        return current_state
+    
+    def _find_migration_path(self, from_version: MigrationVersion, 
+                           to_version: MigrationVersion) -> List[SchemaMigration]:
+        """Find path of migrations to apply"""
+        path = []
+        current_version = from_version
+        
+        while current_version != to_version:
+            next_migration = None
+            
+            # Find next migration in path
+            for migration in self.migrations:
+                if migration.from_version == current_version:
+                    next_migration = migration
+                    break
+            
+            if not next_migration:
+                return []  # No path found
+            
+            path.append(next_migration)
+            current_version = next_migration.to_version
+        
+        return path
+    
+    def _migrate_v1_0_to_v1_1(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Migrate from v1.0 to v1.1 - add metadata"""
+        return {
+            **state,
+            'metadata': {
+                'created_at': 'migration_time',
+                'migration_applied': 'v1.0_to_v1.1'
+            }
+        }
+    
+    def _rollback_v1_1_to_v1_0(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Rollback from v1.1 to v1.0 - remove metadata"""
+        state_copy = state.copy()
+        if 'metadata' in state_copy:
+            del state_copy['metadata']
+        return state_copy
+    
+    def _migrate_v1_1_to_v2_0(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Migrate from v1.1 to v2.0 - restructure data"""
+        return {
+            'data': {
+                'input': state.get('input_data', {}),
+                'output': state.get('output_data', {}),
+                'intermediate': state.get('results', [])
+            },
+            'execution': {
+                'stage': state.get('processing_stage', 'initial'),
+                'errors': state.get('errors', [])
+            },
+            'metadata': state.get('metadata', {})
+        }
+    
+    def _rollback_v2_0_to_v1_1(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Rollback from v2.0 to v1.1 - flatten structure"""
+        data = state.get('data', {})
+        execution = state.get('execution', {})
+        
+        return {
+            'input_data': data.get('input', {}),
+            'output_data': data.get('output', {}),
+            'results': data.get('intermediate', []),
+            'processing_stage': execution.get('stage', 'initial'),
+            'errors': execution.get('errors', []),
+            'metadata': state.get('metadata', {})
+        }
+
+# Migration-aware graph wrapper
+class MigrationAwareGraph:
+    """Graph wrapper that handles state migrations"""
+    
+    def __init__(self, graph, target_version: MigrationVersion = MigrationVersion.V2_0):
+        self.graph = graph
+        self.target_version = target_version
+        self.schema_manager = StateSchemaManager()
+        self.logger = logging.getLogger(__name__)
+    
+    def invoke(self, input_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """Invoke graph with automatic migration"""
+        
+        # Detect input version
+        input_version = self._detect_version(input_data)
+        
+        # Migrate input if needed
+        if input_version != self.target_version:
+            input_data = self.schema_manager.migrate_state(
+                input_data, input_version, self.target_version
+            )
+        
+        # Execute graph
+        result = self.graph.invoke(input_data, **kwargs)
+        
+        return result
+    
+    def _detect_version(self, state: Dict[str, Any]) -> MigrationVersion:
+        """Detect state schema version"""
+        if '_schema_version' in state:
+            return MigrationVersion(state['_schema_version'])
+        
+        # Heuristic detection based on structure
+        if 'data' in state and 'execution' in state:
+            return MigrationVersion.V2_0
+        elif 'metadata' in state:
+            return MigrationVersion.V1_1
+        else:
+            return MigrationVersion.V1_0
+```
+
+### 18.3 Gradual Migration Strategy
+
+#### Blue-Green Deployment with Feature Flags
+
+```python
+# src/migration/gradual_migration.py
+from typing import Dict, Any, Optional, Callable
+from enum import Enum
+import random
+import logging
+from dataclasses import dataclass
+
+class MigrationPhase(Enum):
+    PREPARATION = "preparation"
+    CANARY = "canary"
+    ROLLING = "rolling"  
+    COMPLETE = "complete"
+
+@dataclass
+class MigrationConfig:
+    phase: MigrationPhase
+    traffic_percentage: float  # 0.0 to 1.0
+    feature_flags: Dict[str, bool]
+    rollback_threshold: float  # Error rate threshold for rollback
+
+class FeatureFlagManager:
+    """Manages feature flags for gradual migration"""
+    
+    def __init__(self):
+        self.flags = {}
+        self.logger = logging.getLogger(__name__)
+    
+    def set_flag(self, flag_name: str, enabled: bool, percentage: float = 1.0):
+        """Set feature flag"""
+        self.flags[flag_name] = {
+            'enabled': enabled,
+            'percentage': percentage
+        }
+    
+    def is_enabled(self, flag_name: str, user_id: Optional[str] = None) -> bool:
+        """Check if feature flag is enabled"""
+        if flag_name not in self.flags:
+            return False
+        
+        flag = self.flags[flag_name]
+        
+        if not flag['enabled']:
+            return False
+        
+        # Percentage-based rollout
+        if user_id:
+            # Consistent hash-based distribution
+            hash_value = hash(f"{flag_name}:{user_id}") % 100
+            return (hash_value / 100) < flag['percentage']
+        else:
+            # Random distribution
+            return random.random() < flag['percentage']
+
+class GradualMigrationManager:
+    """Manages gradual migration from legacy to new system"""
+    
+    def __init__(self, legacy_system, new_system):
+        self.legacy_system = legacy_system
+        self.new_system = new_system
+        self.feature_flags = FeatureFlagManager()
+        self.config = MigrationConfig(
+            phase=MigrationPhase.PREPARATION,
+            traffic_percentage=0.0,
+            feature_flags={},
+            rollback_threshold=0.05  # 5% error rate
+        )
+        self.metrics = {
+            'legacy_requests': 0,
+            'new_requests': 0,
+            'legacy_errors': 0,
+            'new_errors': 0,
+            'migration_errors': 0
+        }
+        self.logger = logging.getLogger(__name__)
+    
+    def process_request(self, request_data: Dict[str, Any], 
+                       user_id: Optional[str] = None) -> Dict[str, Any]:
+        """Process request with migration logic"""
+        
+        try:
+            # Decide which system to use
+            use_new_system = self._should_use_new_system(user_id)
+            
+            if use_new_system:
+                return self._process_with_new_system(request_data, user_id)
+            else:
+                return self._process_with_legacy_system(request_data, user_id)
+                
+        except Exception as e:
+            self.logger.error(f"Migration error: {e}")
+            self.metrics['migration_errors'] += 1
+            
+            # Fallback to legacy system
+            return self._process_with_legacy_system(request_data, user_id)
+    
+    def _should_use_new_system(self, user_id: Optional[str]) -> bool:
+        """Determine if request should use new system"""
+        
+        # Check migration phase
+        if self.config.phase == MigrationPhase.PREPARATION:
+            return False
+        
+        # Check feature flag
+        if not self.feature_flags.is_enabled("use_new_system", user_id):
+            return False
+        
+        # Check traffic percentage
+        if user_id:
+            hash_value = hash(user_id) % 100
+            return (hash_value / 100) < self.config.traffic_percentage
+        else:
+            return random.random() < self.config.traffic_percentage
+    
+    def _process_with_legacy_system(self, request_data: Dict[str, Any], 
+                                  user_id: Optional[str]) -> Dict[str, Any]:
+        """Process request with legacy system"""
+        try:
+            self.metrics['legacy_requests'] += 1
+            result = self.legacy_system.process(request_data)
+            
+            # Shadow testing - also run new system for comparison
+            if self.feature_flags.is_enabled("shadow_testing", user_id):
+                self._shadow_test_new_system(request_data)
+            
+            return {
+                **result,
+                'processed_by': 'legacy_system',
+                'migration_metadata': {
+                    'phase': self.config.phase.value,
+                    'system_used': 'legacy'
+                }
+            }
+            
+        except Exception as e:
+            self.metrics['legacy_errors'] += 1
+            raise
+    
+    def _process_with_new_system(self, request_data: Dict[str, Any], 
+                               user_id: Optional[str]) -> Dict[str, Any]:
+        """Process request with new system"""
+        try:
+            self.metrics['new_requests'] += 1
+            
+            # Invoke LangGraph system
+            result = self.new_system.invoke(request_data)
+            
+            return {
+                **result,
+                'processed_by': 'new_system',
+                'migration_metadata': {
+                    'phase': self.config.phase.value,
+                    'system_used': 'new'
+                }
+            }
+            
+        except Exception as e:
+            self.metrics['new_errors'] += 1
+            
+            # Fallback to legacy if enabled
+            if self.feature_flags.is_enabled("fallback_on_error", user_id):
+                self.logger.warning(f"New system failed, falling back to legacy: {e}")
+                return self._process_with_legacy_system(request_data, user_id)
+            else:
+                raise
+    
+    def _shadow_test_new_system(self, request_data: Dict[str, Any]):
+        """Run new system in shadow mode for testing"""
+        try:
+            # Run new system without affecting response
+            result = self.new_system.invoke(request_data)
+            
+            # Log results for comparison
+            self.logger.info(f"Shadow test successful: {result}")
+            
+        except Exception as e:
+            self.logger.error(f"Shadow test failed: {e}")
+    
+    def advance_migration_phase(self):
+        """Advance to next migration phase"""
+        current_error_rate = self._calculate_error_rate()
+        
+        if current_error_rate > self.config.rollback_threshold:
+            self.logger.warning(f"Error rate {current_error_rate} exceeds threshold, not advancing")
+            return False
+        
+        if self.config.phase == MigrationPhase.PREPARATION:
+            # Start canary deployment
+            self.config.phase = MigrationPhase.CANARY
+            self.config.traffic_percentage = 0.05  # 5%
+            self.feature_flags.set_flag("use_new_system", True, 0.05)
+            self.feature_flags.set_flag("shadow_testing", True, 0.1)
+            
+        elif self.config.phase == MigrationPhase.CANARY:
+            # Start rolling deployment
+            self.config.phase = MigrationPhase.ROLLING
+            self.config.traffic_percentage = 0.5  # 50%
+            self.feature_flags.set_flag("use_new_system", True, 0.5)
+            
+        elif self.config.phase == MigrationPhase.ROLLING:
+            # Complete migration
+            self.config.phase = MigrationPhase.COMPLETE
+            self.config.traffic_percentage = 1.0  # 100%
+            self.feature_flags.set_flag("use_new_system", True, 1.0)
+            
+        self.logger.info(f"Advanced to phase: {self.config.phase}")
+        return True
+    
+    def rollback_migration(self):
+        """Rollback migration to previous phase"""
+        if self.config.phase == MigrationPhase.COMPLETE:
+            self.config.phase = MigrationPhase.ROLLING
+            self.config.traffic_percentage = 0.5
+            self.feature_flags.set_flag("use_new_system", True, 0.5)
+            
+        elif self.config.phase == MigrationPhase.ROLLING:
+            self.config.phase = MigrationPhase.CANARY
+            self.config.traffic_percentage = 0.05
+            self.feature_flags.set_flag("use_new_system", True, 0.05)
+            
+        elif self.config.phase == MigrationPhase.CANARY:
+            self.config.phase = MigrationPhase.PREPARATION
+            self.config.traffic_percentage = 0.0
+            self.feature_flags.set_flag("use_new_system", False)
+        
+        self.logger.info(f"Rolled back to phase: {self.config.phase}")
+    
+    def _calculate_error_rate(self) -> float:
+        """Calculate current error rate for new system"""
+        if self.metrics['new_requests'] == 0:
+            return 0.0
+        
+        return self.metrics['new_errors'] / self.metrics['new_requests']
+    
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get migration metrics"""
+        return {
+            **self.metrics,
+            'error_rates': {
+                'legacy': self.metrics['legacy_errors'] / max(1, self.metrics['legacy_requests']),
+                'new': self.metrics['new_errors'] / max(1, self.metrics['new_requests']),
+            },
+            'traffic_split': {
+                'legacy_percentage': 1 - self.config.traffic_percentage,
+                'new_percentage': self.config.traffic_percentage
+            },
+            'phase': self.config.phase.value
+        }
+
+# Example usage
+def setup_gradual_migration(legacy_system, langgraph_system):
+    """Setup gradual migration"""
+    migration_manager = GradualMigrationManager(legacy_system, langgraph_system)
+    
+    # Start with shadow testing
+    migration_manager.feature_flags.set_flag("shadow_testing", True, 0.1)
+    migration_manager.feature_flags.set_flag("fallback_on_error", True)
+    
+    return migration_manager
+```
+
+---
+
+## 19. Enterprise Integration
+
+### 19.1 SSO and Authentication Integration
+
+#### SAML/OAuth Integration
+
+```python
+# src/enterprise/auth_integration.py
+from typing import Dict, Any, Optional, List
+import jwt
+import requests
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+import logging
+from langgraph.graph import StateGraph
+from langgraph.checkpoint.memory import MemorySaver
+
+@dataclass
+class UserContext:
+    user_id: str
+    roles: List[str]
+    permissions: List[str]
+    org_id: str
+    session_id: str
+    expires_at: datetime
+
+class EnterpriseAuthManager:
+    """Enterprise authentication and authorization manager"""
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self.logger = logging.getLogger(__name__)
+        self.jwt_secret = config.get('jwt_secret', 'your-secret-key')
+        self.saml_config = config.get('saml', {})
+        self.oauth_config = config.get('oauth', {})
+    
+    def validate_jwt_token(self, token: str) -> Optional[UserContext]:
+        """Validate JWT token and extract user context"""
+        try:
+            payload = jwt.decode(token, self.jwt_secret, algorithms=['HS256'])
+            
+            return UserContext(
+                user_id=payload['sub'],
+                roles=payload.get('roles', []),
+                permissions=payload.get('permissions', []),
+                org_id=payload.get('org_id', ''),
+                session_id=payload.get('session_id', ''),
+                expires_at=datetime.fromtimestamp(payload['exp'])
+            )
+        except jwt.InvalidTokenError as e:
+            self.logger.error(f"Invalid JWT token: {e}")
+            return None
+    
+    def validate_saml_response(self, saml_response: str) -> Optional[UserContext]:
+        """Validate SAML response and extract user context"""
+        try:
+            # In a real implementation, use proper SAML library like python3-saml
+            # This is a simplified example
+            user_data = self._parse_saml_response(saml_response)
+            
+            return UserContext(
+                user_id=user_data['user_id'],
+                roles=user_data.get('roles', []),
+                permissions=self._map_roles_to_permissions(user_data.get('roles', [])),
+                org_id=user_data.get('org_id', ''),
+                session_id=user_data.get('session_id', ''),
+                expires_at=datetime.now() + timedelta(hours=8)
+            )
+        except Exception as e:
+            self.logger.error(f"SAML validation failed: {e}")
+            return None
+    
+    def validate_oauth_token(self, access_token: str) -> Optional[UserContext]:
+        """Validate OAuth access token"""
+        try:
+            # Validate with OAuth provider
+            response = requests.get(
+                f"{self.oauth_config['userinfo_endpoint']}",
+                headers={'Authorization': f'Bearer {access_token}'},
+                timeout=10
+            )
+            
+            if response.status_code == 200:
+                user_data = response.json()
+                
+                return UserContext(
+                    user_id=user_data['sub'],
+                    roles=user_data.get('roles', []),
+                    permissions=self._map_roles_to_permissions(user_data.get('roles', [])),
+                    org_id=user_data.get('organization', ''),
+                    session_id=access_token[:16],  # Use part of token as session ID
+                    expires_at=datetime.now() + timedelta(seconds=user_data.get('exp', 3600))
+                )
+            else:
+                return None
+                
+        except Exception as e:
+            self.logger.error(f"OAuth validation failed: {e}")
+            return None
+    
+    def check_permission(self, user_context: UserContext, required_permission: str) -> bool:
+        """Check if user has required permission"""
+        return required_permission in user_context.permissions
+    
+    def _parse_saml_response(self, saml_response: str) -> Dict[str, Any]:
+        """Parse SAML response - simplified implementation"""
+        # In reality, use proper SAML parsing library
+        return {
+            'user_id': 'user123',
+            'roles': ['data_analyst', 'report_viewer'],
+            'org_id': 'org456'
+        }
+    
+    def _map_roles_to_permissions(self, roles: List[str]) -> List[str]:
+        """Map roles to permissions"""
+        role_permission_map = {
+            'admin': ['read', 'write', 'delete', 'manage_users'],
+            'data_analyst': ['read', 'write', 'analyze'],
+            'report_viewer': ['read'],
+            'manager': ['read', 'write', 'approve']
+        }
+        
+        permissions = set()
+        for role in roles:
+            permissions.update(role_permission_map.get(role, []))
+        
+        return list(permissions)
+
+class AuthenticatedGraphWrapper:
+    """Wrapper that adds authentication to LangGraph execution"""
+    
+    def __init__(self, graph: StateGraph, auth_manager: EnterpriseAuthManager):
+        self.graph = graph
+        self.auth_manager = auth_manager
+        self.logger = logging.getLogger(__name__)
+    
+    def invoke(self, input_data: Dict[str, Any], auth_token: str, 
+               required_permission: str = 'read', **kwargs) -> Dict[str, Any]:
+        """Invoke graph with authentication"""
+        
+        # Validate authentication
+        user_context = self._authenticate(auth_token)
+        if not user_context:
+            raise PermissionError("Authentication failed")
+        
+        # Check permissions
+        if not self.auth_manager.check_permission(user_context, required_permission):
+            raise PermissionError(f"Permission '{required_permission}' required")
+        
+        # Add user context to state
+        authenticated_input = {
+            **input_data,
+            'user_context': {
+                'user_id': user_context.user_id,
+                'roles': user_context.roles,
+                'permissions': user_context.permissions,
+                'org_id': user_context.org_id
+            }
+        }
+        
+        # Execute graph
+        try:
+            result = self.graph.invoke(authenticated_input, **kwargs)
+            
+            # Add audit trail
+            self._log_execution(user_context, input_data, result)
+            
+            return result
+            
+        except Exception as e:
+            self._log_error(user_context, input_data, str(e))
+            raise
+    
+    def _authenticate(self, auth_token: str) -> Optional[UserContext]:
+        """Authenticate user with various methods"""
+        
+        # Try JWT first
+        if auth_token.startswith('eyJ'):  # JWT tokens start with this
+            return self.auth_manager.validate_jwt_token(auth_token)
+        
+        # Try OAuth
+        if auth_token.startswith('Bearer '):
+            token = auth_token[7:]  # Remove 'Bearer ' prefix
+            return self.auth_manager.validate_oauth_token(token)
+        
+        # Try SAML (if it's a SAML response)
+        if '<saml' in auth_token.lower():
+            return self.auth_manager.validate_saml_response(auth_token)
+        
+        return None
+    
+    def _log_execution(self, user_context: UserContext, 
+                      input_data: Dict[str, Any], result: Dict[str, Any]):
+        """Log successful execution for audit"""
+        self.logger.info(f"Graph executed by {user_context.user_id} from {user_context.org_id}")
+    
+    def _log_error(self, user_context: UserContext, 
+                   input_data: Dict[str, Any], error: str):
+        """Log execution error for audit"""
+        self.logger.error(f"Graph execution failed for {user_context.user_id}: {error}")
+```
+
+### 19.2 Enterprise Data Integration
+
+#### Database and API Integration
+
+```python
+# src/enterprise/data_integration.py
+from typing import Dict, Any, List, Optional, AsyncGenerator
+import asyncio
+import aiohttp
+import asyncpg
+from sqlalchemy import create_engine, MetaData, Table
+from sqlalchemy.orm import sessionmaker
+import pandas as pd
+from dataclasses import dataclass
+import logging
+
+@dataclass
+class DataSource:
+    name: str
+    type: str  # 'postgresql', 'mysql', 'api', 'file'
+    connection_string: str
+    config: Dict[str, Any]
+
+class EnterpriseDataManager:
+    """Manages enterprise data sources and integration"""
+    
+    def __init__(self, data_sources: List[DataSource]):
+        self.data_sources = {ds.name: ds for ds in data_sources}
+        self.connections = {}
+        self.logger = logging.getLogger(__name__)
+    
+    async def initialize_connections(self):
+        """Initialize all data source connections"""
+        for name, source in self.data_sources.items():
+            try:
+                if source.type == 'postgresql':
+                    self.connections[name] = await asyncpg.create_pool(source.connection_string)
+                elif source.type == 'mysql':
+                    # MySQL async connection setup
+                    pass
+                elif source.type == 'api':
+                    # HTTP client session
+                    self.connections[name] = aiohttp.ClientSession()
+                
+                self.logger.info(f"Connected to {name} data source")
+            except Exception as e:
+                self.logger.error(f"Failed to connect to {name}: {e}")
+    
+    async def query_data(self, source_name: str, query: str, 
+                        params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Execute query on specified data source"""
+        
+        if source_name not in self.data_sources:
+            raise ValueError(f"Unknown data source: {source_name}")
+        
+        source = self.data_sources[source_name]
+        connection = self.connections.get(source_name)
+        
+        if not connection:
+            raise ConnectionError(f"No connection to {source_name}")
+        
+        try:
+            if source.type == 'postgresql':
+                async with connection.acquire() as conn:
+                    result = await conn.fetch(query, *(params.values() if params else []))
+                    return [dict(row) for row in result]
+            
+            elif source.type == 'api':
+                return await self._query_api(source, query, params)
+            
+        except Exception as e:
+            self.logger.error(f"Query failed for {source_name}: {e}")
+            raise
+    
+    async def _query_api(self, source: DataSource, endpoint: str, 
+                        params: Optional[Dict[str, Any]] = None) -> List[Dict[str, Any]]:
+        """Query REST API"""
+        session = self.connections[source.name]
+        
+        url = f"{source.config['base_url']}/{endpoint.lstrip('/')}"
+        headers = source.config.get('headers', {})
+        
+        async with session.get(url, params=params, headers=headers) as response:
+            if response.status == 200:
+                data = await response.json()
+                return data if isinstance(data, list) else [data]
+            else:
+                raise Exception(f"API request failed: {response.status}")
+    
+    async def stream_data(self, source_name: str, query: str, 
+                         batch_size: int = 1000) -> AsyncGenerator[List[Dict[str, Any]], None]:
+        """Stream data in batches for large datasets"""
+        
+        source = self.data_sources[source_name]
+        connection = self.connections.get(source_name)
+        
+        if source.type == 'postgresql':
+            async with connection.acquire() as conn:
+                async with conn.transaction():
+                    cursor = await conn.cursor(query)
+                    
+                    while True:
+                        batch = await cursor.fetch(batch_size)
+                        if not batch:
+                            break
+                        
+                        yield [dict(row) for row in batch]
+    
+    async def execute_transaction(self, source_name: str, operations: List[Dict[str, Any]]) -> bool:
+        """Execute multiple operations in a transaction"""
+        
+        source = self.data_sources[source_name]
+        connection = self.connections.get(source_name)
+        
+        if source.type == 'postgresql':
+            async with connection.acquire() as conn:
+                async with conn.transaction():
+                    try:
+                        for op in operations:
+                            if op['type'] == 'query':
+                                await conn.execute(op['sql'], *op.get('params', []))
+                            elif op['type'] == 'bulk_insert':
+                                await conn.executemany(op['sql'], op['data'])
+                        return True
+                    except Exception as e:
+                        self.logger.error(f"Transaction failed: {e}")
+                        raise
+    
+    async def close_connections(self):
+        """Close all connections"""
+        for name, connection in self.connections.items():
+            try:
+                if hasattr(connection, 'close'):
+                    if asyncio.iscoroutinefunction(connection.close):
+                        await connection.close()
+                    else:
+                        connection.close()
+                self.logger.info(f"Closed connection to {name}")
+            except Exception as e:
+                self.logger.error(f"Error closing {name}: {e}")
+
+# Data integration nodes for LangGraph
+class DataIntegrationNodes:
+    """LangGraph nodes for enterprise data integration"""
+    
+    def __init__(self, data_manager: EnterpriseDataManager):
+        self.data_manager = data_manager
+        self.logger = logging.getLogger(__name__)
+    
+    async def fetch_customer_data(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Fetch customer data from CRM system"""
+        customer_id = state.get('customer_id')
+        
+        if not customer_id:
+            return {**state, 'error': 'Customer ID required'}
+        
+        try:
+            query = "SELECT * FROM customers WHERE id = $1"
+            customer_data = await self.data_manager.query_data(
+                'crm_db', query, {'customer_id': customer_id}
+            )
+            
+            return {
+                **state,
+                'customer_data': customer_data[0] if customer_data else None
+            }
+        except Exception as e:
+            return {**state, 'error': f'Failed to fetch customer data: {e}'}
+    
+    async def fetch_financial_data(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Fetch financial data from financial systems"""
+        customer_id = state.get('customer_id')
+        
+        try:
+            # Query multiple financial data sources
+            tasks = [
+                self.data_manager.query_data(
+                    'financial_db',
+                    "SELECT * FROM transactions WHERE customer_id = $1 ORDER BY date DESC LIMIT 100",
+                    {'customer_id': customer_id}
+                ),
+                self.data_manager.query_data(
+                    'credit_api',
+                    f"credit-scores/{customer_id}"
+                )
+            ]
+            
+            transactions, credit_scores = await asyncio.gather(*tasks)
+            
+            return {
+                **state,
+                'financial_data': {
+                    'transactions': transactions,
+                    'credit_scores': credit_scores
+                }
+            }
+        except Exception as e:
+            return {**state, 'error': f'Failed to fetch financial data: {e}'}
+    
+    async def enrich_with_external_data(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Enrich data with external sources"""
+        try:
+            customer_data = state.get('customer_data', {})
+            company_name = customer_data.get('company')
+            
+            if company_name:
+                # Fetch company data from external API
+                company_info = await self.data_manager.query_data(
+                    'external_api',
+                    f"companies/search?name={company_name}"
+                )
+                
+                return {
+                    **state,
+                    'enriched_data': {
+                        **customer_data,
+                        'company_info': company_info[0] if company_info else None
+                    }
+                }
+            else:
+                return {**state, 'enriched_data': customer_data}
+                
+        except Exception as e:
+            return {**state, 'error': f'Data enrichment failed: {e}'}
+    
+    async def aggregate_insights(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Aggregate data from multiple sources into insights"""
+        try:
+            customer_data = state.get('customer_data', {})
+            financial_data = state.get('financial_data', {})
+            enriched_data = state.get('enriched_data', {})
+            
+            # Calculate insights
+            transactions = financial_data.get('transactions', [])
+            avg_transaction_value = sum(t.get('amount', 0) for t in transactions) / len(transactions) if transactions else 0
+            
+            insights = {
+                'customer_profile': {
+                    'id': customer_data.get('id'),
+                    'name': customer_data.get('name'),
+                    'segment': customer_data.get('segment', 'standard')
+                },
+                'financial_summary': {
+                    'avg_transaction_value': avg_transaction_value,
+                    'transaction_count': len(transactions),
+                    'credit_score': financial_data.get('credit_scores', {}).get('score', 0)
+                },
+                'risk_assessment': self._calculate_risk_score(customer_data, financial_data),
+                'recommendations': self._generate_recommendations(customer_data, financial_data)
+            }
+            
+            return {**state, 'insights': insights}
+            
+        except Exception as e:
+            return {**state, 'error': f'Insight aggregation failed: {e}'}
+    
+    def _calculate_risk_score(self, customer_data: Dict, financial_data: Dict) -> float:
+        """Calculate customer risk score"""
+        base_score = 0.5
+        
+        # Adjust based on credit score
+        credit_score = financial_data.get('credit_scores', {}).get('score', 600)
+        if credit_score > 750:
+            base_score -= 0.2
+        elif credit_score < 600:
+            base_score += 0.3
+        
+        # Adjust based on transaction history
+        transactions = financial_data.get('transactions', [])
+        if len(transactions) > 50:
+            base_score -= 0.1
+        
+        return max(0.0, min(1.0, base_score))
+    
+    def _generate_recommendations(self, customer_data: Dict, financial_data: Dict) -> List[str]:
+        """Generate customer recommendations"""
+        recommendations = []
+        
+        credit_score = financial_data.get('credit_scores', {}).get('score', 600)
+        if credit_score > 750:
+            recommendations.append("Eligible for premium financial products")
+        
+        transactions = financial_data.get('transactions', [])
+        if len(transactions) > 100:
+            recommendations.append("High-value customer - prioritize for retention")
+        
+        return recommendations
+
+# Example enterprise graph setup
+async def create_enterprise_data_graph():
+    """Create enterprise data processing graph"""
+    
+    # Setup data sources
+    data_sources = [
+        DataSource(
+            name='crm_db',
+            type='postgresql',
+            connection_string='postgresql://user:pass@localhost/crm',
+            config={}
+        ),
+        DataSource(
+            name='financial_db',
+            type='postgresql',
+            connection_string='postgresql://user:pass@localhost/finance',
+            config={}
+        ),
+        DataSource(
+            name='external_api',
+            type='api',
+            connection_string='',
+            config={
+                'base_url': 'https://api.external-provider.com',
+                'headers': {'Authorization': 'Bearer your-api-key'}
+            }
+        )
+    ]
+    
+    # Initialize data manager
+    data_manager = EnterpriseDataManager(data_sources)
+    await data_manager.initialize_connections()
+    
+    # Create nodes
+    nodes = DataIntegrationNodes(data_manager)
+    
+    # Build graph
+    graph = StateGraph(Dict[str, Any])
+    graph.add_node("fetch_customer", nodes.fetch_customer_data)
+    graph.add_node("fetch_financial", nodes.fetch_financial_data)
+    graph.add_node("enrich_data", nodes.enrich_with_external_data)
+    graph.add_node("aggregate_insights", nodes.aggregate_insights)
+    
+    # Add edges
+    graph.add_edge("fetch_customer", "fetch_financial")
+    graph.add_edge("fetch_financial", "enrich_data")
+    graph.add_edge("enrich_data", "aggregate_insights")
+    
+    return graph.compile(checkpointer=MemorySaver()), data_manager
+```
+
+### 19.3 Compliance and Governance
+
+#### GDPR, SOX, and Audit Trail Implementation
+
+```python
+# src/enterprise/compliance.py
+from typing import Dict, Any, List, Optional
+from dataclasses import dataclass, field
+from datetime import datetime, timedelta
+from enum import Enum
+import hashlib
+import json
+import logging
+from sqlalchemy import create_engine, Column, String, DateTime, Text, Boolean
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+class DataClassification(Enum):
+    PUBLIC = "public"
+    INTERNAL = "internal"
+    CONFIDENTIAL = "confidential"
+    RESTRICTED = "restricted"
+
+class ProcessingPurpose(Enum):
+    CUSTOMER_SERVICE = "customer_service"
+    MARKETING = "marketing"
+    ANALYTICS = "analytics"
+    COMPLIANCE = "compliance"
+    OPERATIONS = "operations"
+
+@dataclass
+class DataProcessingRecord:
+    data_subject_id: str
+    processing_purpose: ProcessingPurpose
+    data_classification: DataClassification
+    data_elements: List[str]
+    legal_basis: str
+    retention_period: timedelta
+    consent_given: bool = False
+    consent_timestamp: Optional[datetime] = None
+    processing_timestamp: datetime = field(default_factory=datetime.now)
+
+class GDPRComplianceManager:
+    """GDPR compliance management for enterprise LangGraph applications"""
+    
+    def __init__(self, db_connection_string: str):
+        self.engine = create_engine(db_connection_string)
+        self.SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=self.engine)
+        self.logger = logging.getLogger(__name__)
+        self._create_tables()
+    
+    def _create_tables(self):
+        """Create compliance tracking tables"""
+        Base = declarative_base()
+        
+        class DataProcessingLog(Base):
+            __tablename__ = "data_processing_log"
+            
+            id = Column(String, primary_key=True)
+            data_subject_id = Column(String, nullable=False)
+            processing_purpose = Column(String, nullable=False)
+            data_classification = Column(String, nullable=False)
+            data_elements = Column(Text, nullable=False)  # JSON array
+            legal_basis = Column(String, nullable=False)
+            consent_given = Column(Boolean, default=False)
+            consent_timestamp = Column(DateTime)
+            processing_timestamp = Column(DateTime, default=datetime.now)
+            retention_until = Column(DateTime, nullable=False)
+        
+        Base.metadata.create_all(bind=self.engine)
+    
+    def record_data_processing(self, record: DataProcessingRecord) -> str:
+        """Record data processing activity for GDPR compliance"""
+        
+        record_id = hashlib.sha256(
+            f"{record.data_subject_id}:{record.processing_timestamp.isoformat()}".encode()
+        ).hexdigest()
+        
+        db = self.SessionLocal()
+        try:
+            processing_log = {
+                'id': record_id,
+                'data_subject_id': record.data_subject_id,
+                'processing_purpose': record.processing_purpose.value,
+                'data_classification': record.data_classification.value,
+                'data_elements': json.dumps(record.data_elements),
+                'legal_basis': record.legal_basis,
+                'consent_given': record.consent_given,
+                'consent_timestamp': record.consent_timestamp,
+                'processing_timestamp': record.processing_timestamp,
+                'retention_until': record.processing_timestamp + record.retention_period
+            }
+            
+            # Insert into database (using raw SQL for simplicity)
+            db.execute(
+                "INSERT INTO data_processing_log VALUES (:id, :data_subject_id, :processing_purpose, :data_classification, :data_elements, :legal_basis, :consent_given, :consent_timestamp, :processing_timestamp, :retention_until)",
+                processing_log
+            )
+            db.commit()
+            
+            self.logger.info(f"Recorded data processing: {record_id}")
+            return record_id
+            
+        except Exception as e:
+            db.rollback()
+            self.logger.error(f"Failed to record data processing: {e}")
+            raise
+        finally:
+            db.close()
+    
+    def check_data_retention(self) -> List[str]:
+        """Check for data that should be deleted per retention policies"""
+        db = self.SessionLocal()
+        try:
+            result = db.execute(
+                "SELECT id, data_subject_id FROM data_processing_log WHERE retention_until < :now",
+                {'now': datetime.now()}
+            )
+            
+            expired_records = [{'id': row[0], 'data_subject_id': row[1]} for row in result]
+            
+            if expired_records:
+                self.logger.warning(f"Found {len(expired_records)} records past retention period")
+            
+            return expired_records
+            
+        finally:
+            db.close()
+    
+    def handle_data_subject_request(self, data_subject_id: str, request_type: str) -> Dict[str, Any]:
+        """Handle GDPR data subject requests (access, portability, deletion)"""
+        db = self.SessionLocal()
+        try:
+            if request_type == 'access':
+                # Right to access
+                result = db.execute(
+                    "SELECT * FROM data_processing_log WHERE data_subject_id = :subject_id",
+                    {'subject_id': data_subject_id}
+                )
+                records = [dict(row) for row in result]
+                
+                return {
+                    'request_type': 'access',
+                    'data_subject_id': data_subject_id,
+                    'records': records,
+                    'total_records': len(records)
+                }
+            
+            elif request_type == 'deletion':
+                # Right to be forgotten
+                result = db.execute(
+                    "DELETE FROM data_processing_log WHERE data_subject_id = :subject_id",
+                    {'subject_id': data_subject_id}
+                )
+                deleted_count = result.rowcount
+                db.commit()
+                
+                self.logger.info(f"Deleted {deleted_count} records for data subject {data_subject_id}")
+                
+                return {
+                    'request_type': 'deletion',
+                    'data_subject_id': data_subject_id,
+                    'deleted_records': deleted_count
+                }
+            
+            elif request_type == 'portability':
+                # Data portability
+                result = db.execute(
+                    "SELECT data_elements, processing_timestamp FROM data_processing_log WHERE data_subject_id = :subject_id",
+                    {'subject_id': data_subject_id}
+                )
+                
+                portable_data = {}
+                for row in result:
+                    data_elements = json.loads(row[0])
+                    timestamp = row[1].isoformat()
+                    portable_data[timestamp] = data_elements
+                
+                return {
+                    'request_type': 'portability',
+                    'data_subject_id': data_subject_id,
+                    'portable_data': portable_data
+                }
+                
+        finally:
+            db.close()
+
+class SOXComplianceManager:
+    """SOX compliance for financial data processing"""
+    
+    def __init__(self):
+        self.logger = logging.getLogger(__name__)
+        self.audit_trail = []
+    
+    def create_control_checkpoint(self, control_id: str, control_description: str, 
+                                state: Dict[str, Any]) -> Dict[str, Any]:
+        """Create SOX control checkpoint"""
+        
+        checkpoint = {
+            'control_id': control_id,
+            'description': control_description,
+            'timestamp': datetime.now().isoformat(),
+            'state_hash': self._hash_state(state),
+            'data_elements': list(state.keys()),
+            'validation_status': 'passed'
+        }
+        
+        self.audit_trail.append(checkpoint)
+        
+        # Add control metadata to state
+        return {
+            **state,
+            'sox_controls': state.get('sox_controls', []) + [checkpoint]
+        }
+    
+    def validate_financial_data(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Validate financial data per SOX requirements"""
+        
+        financial_data = state.get('financial_data', {})
+        validation_errors = []
+        
+        # Check data completeness
+        required_fields = ['amount', 'date', 'account_id', 'transaction_type']
+        for field in required_fields:
+            if field not in financial_data:
+                validation_errors.append(f"Missing required field: {field}")
+        
+        # Check data quality
+        amount = financial_data.get('amount', 0)
+        if not isinstance(amount, (int, float)) or amount < 0:
+            validation_errors.append("Invalid amount value")
+        
+        # Record validation
+        control_state = self.create_control_checkpoint(
+            'SOX-001',
+            'Financial Data Validation',
+            state
+        )
+        
+        if validation_errors:
+            control_state['validation_errors'] = validation_errors
+            control_state['sox_controls'][-1]['validation_status'] = 'failed'
+        
+        return control_state
+    
+    def segregation_of_duties_check(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Ensure segregation of duties compliance"""
+        
+        user_context = state.get('user_context', {})
+        operation_type = state.get('operation_type', 'read')
+        
+        user_roles = user_context.get('roles', [])
+        
+        # Check for conflicting roles
+        conflicting_combinations = [
+            (['approver', 'preparer'], 'Cannot approve and prepare same transaction'),
+            (['auditor', 'processor'], 'Cannot audit and process same data')
+        ]
+        
+        segregation_violations = []
+        for conflicting_roles, message in conflicting_combinations:
+            if all(role in user_roles for role in conflicting_roles):
+                segregation_violations.append(message)
+        
+        control_state = self.create_control_checkpoint(
+            'SOX-002',
+            'Segregation of Duties Check',
+            state
+        )
+        
+        if segregation_violations:
+            control_state['segregation_violations'] = segregation_violations
+            control_state['sox_controls'][-1]['validation_status'] = 'failed'
+        
+        return control_state
+    
+    def _hash_state(self, state: Dict[str, Any]) -> str:
+        """Create hash of state for audit purposes"""
+        state_json = json.dumps(state, sort_keys=True, default=str)
+        return hashlib.sha256(state_json.encode()).hexdigest()
+    
+    def generate_audit_report(self) -> Dict[str, Any]:
+        """Generate SOX audit report"""
+        
+        total_controls = len(self.audit_trail)
+        passed_controls = sum(1 for c in self.audit_trail if c['validation_status'] == 'passed')
+        failed_controls = total_controls - passed_controls
+        
+        return {
+            'report_timestamp': datetime.now().isoformat(),
+            'total_controls_executed': total_controls,
+            'controls_passed': passed_controls,
+            'controls_failed': failed_controls,
+            'compliance_rate': passed_controls / total_controls if total_controls > 0 else 0,
+            'audit_trail': self.audit_trail
+        }
+
+class ComplianceAwareGraphWrapper:
+    """Graph wrapper that ensures compliance with enterprise regulations"""
+    
+    def __init__(self, graph, gdpr_manager: GDPRComplianceManager, 
+                 sox_manager: SOXComplianceManager):
+        self.graph = graph
+        self.gdpr_manager = gdpr_manager
+        self.sox_manager = sox_manager
+        self.logger = logging.getLogger(__name__)
+    
+    def invoke(self, input_data: Dict[str, Any], **kwargs) -> Dict[str, Any]:
+        """Invoke graph with compliance checks"""
+        
+        # Pre-processing compliance checks
+        compliant_input = self._apply_compliance_checks(input_data)
+        
+        # Record GDPR processing
+        if 'user_context' in compliant_input:
+            self._record_gdpr_processing(compliant_input)
+        
+        # Execute graph
+        result = self.graph.invoke(compliant_input, **kwargs)
+        
+        # Post-processing compliance
+        compliant_result = self._finalize_compliance(result)
+        
+        return compliant_result
+    
+    def _apply_compliance_checks(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Apply pre-processing compliance checks"""
+        
+        # Apply SOX controls if financial data present
+        if 'financial_data' in state:
+            state = self.sox_manager.validate_financial_data(state)
+            state = self.sox_manager.segregation_of_duties_check(state)
+        
+        # Check data classification
+        state = self._classify_data(state)
+        
+        return state
+    
+    def _record_gdpr_processing(self, state: Dict[str, Any]):
+        """Record GDPR data processing activity"""
+        
+        user_context = state.get('user_context', {})
+        data_subject_id = user_context.get('user_id', 'unknown')
+        
+        # Determine processing purpose
+        processing_purpose = ProcessingPurpose.ANALYTICS  # Default
+        if 'customer_service' in str(state).lower():
+            processing_purpose = ProcessingPurpose.CUSTOMER_SERVICE
+        elif 'marketing' in str(state).lower():
+            processing_purpose = ProcessingPurpose.MARKETING
+        
+        # Create processing record
+        record = DataProcessingRecord(
+            data_subject_id=data_subject_id,
+            processing_purpose=processing_purpose,
+            data_classification=DataClassification.INTERNAL,
+            data_elements=list(state.keys()),
+            legal_basis="Legitimate interest",
+            retention_period=timedelta(days=365),
+            consent_given=True,  # Assume consent for this example
+            consent_timestamp=datetime.now()
+        )
+        
+        self.gdpr_manager.record_data_processing(record)
+    
+    def _classify_data(self, state: Dict[str, Any]) -> Dict[str, Any]:
+        """Classify data elements according to sensitivity"""
+        
+        sensitive_patterns = ['ssn', 'social_security', 'credit_card', 'password', 'tax_id']
+        confidential_patterns = ['financial', 'salary', 'revenue', 'profit']
+        
+        data_classification = DataClassification.PUBLIC
+        
+        state_str = json.dumps(state, default=str).lower()
+        
+        if any(pattern in state_str for pattern in sensitive_patterns):
+            data_classification = DataClassification.RESTRICTED
+        elif any(pattern in state_str for pattern in confidential_patterns):
+            data_classification = DataClassification.CONFIDENTIAL
+        elif 'internal' in state_str:
+            data_classification = DataClassification.INTERNAL
+        
+        return {
+            **state,
+            'data_classification': data_classification.value
+        }
+    
+    def _finalize_compliance(self, result: Dict[str, Any]) -> Dict[str, Any]:
+        """Finalize compliance checks and reporting"""
+        
+        # Generate compliance summary
+        compliance_summary = {
+            'gdpr_compliant': True,  # Simplified
+            'sox_compliant': all(
+                c['validation_status'] == 'passed' 
+                for c in result.get('sox_controls', [])
+            ),
+            'data_classification': result.get('data_classification', 'public'),
+            'audit_trail_id': hashlib.sha256(
+                json.dumps(result, sort_keys=True, default=str).encode()
+            ).hexdigest()
+        }
+        
+        return {
+            **result,
+            'compliance_summary': compliance_summary
+        }
+
+# Example enterprise compliance setup
+def setup_enterprise_compliance_graph(base_graph):
+    """Setup enterprise graph with full compliance"""
+    
+    # Initialize compliance managers
+    gdpr_manager = GDPRComplianceManager("sqlite:///compliance.db")
+    sox_manager = SOXComplianceManager()
+    
+    # Wrap graph with compliance
+    compliant_graph = ComplianceAwareGraphWrapper(base_graph, gdpr_manager, sox_manager)
+    
+    return compliant_graph, gdpr_manager, sox_manager
 ```
 
 ---

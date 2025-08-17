@@ -13,11 +13,12 @@
 - [Chapter 7: Document Processing and Retrieval](#chapter-7-document-processing-and-retrieval)
 - [Chapter 8: Vector Stores and Embeddings](#chapter-8-vector-stores-and-embeddings)
 - [Chapter 9: Agents and Tools](#chapter-9-agents-and-tools)
-- [Chapter 10: Advanced Chains and Custom Components](#chapter-10-advanced-chains-and-custom-components)
+- [Chapter 10: Advanced Patterns and Optimization](#chapter-10-advanced-patterns-and-optimization)
 - [Chapter 11: Real-World Applications](#chapter-11-real-world-applications)
-- [Chapter 12: Comprehensive Testing Strategies](#chapter-12-comprehensive-testing-strategies)
+- [Chapter 12: Testing Strategies](#chapter-12-testing-strategies)
 - [Chapter 13: Production Deployment](#chapter-13-production-deployment)
 - [Chapter 14: Debugging and Troubleshooting](#chapter-14-debugging-and-troubleshooting)
+- [Chapter 15: LangSmith - Observability and Debugging](#chapter-15-langsmith---observability-and-debugging)
 
 ---
 
@@ -4946,9 +4947,1855 @@ if __name__ == "__main__":
     main()
 ```
 
-## Chapter 11: Testing Strategies
+---
 
-### 11.1 Comprehensive Testing Framework
+## Chapter 11: Real-World Applications
+
+This chapter demonstrates complete, production-ready applications using LangChain to solve real business problems.
+
+### 11.1 Customer Support Chatbot
+
+A comprehensive customer support system with knowledge base integration, conversation memory, and escalation handling.
+
+```python
+# ai/langchain/examples/11_customer_support.py
+
+import os
+from typing import Dict, List, Optional, Any
+from dataclasses import dataclass
+from datetime import datetime
+import json
+import logging
+
+from langchain.chat_models import ChatOpenAI
+from langchain.embeddings.openai import OpenAIEmbeddings  
+from langchain.vectorstores import Chroma
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.chains import ConversationalRetrievalChain
+from langchain.memory import ConversationBufferWindowMemory
+from langchain.prompts import PromptTemplate
+from langchain.schema import BaseRetriever, Document
+from langchain.callbacks.base import BaseCallbackHandler
+
+@dataclass
+class CustomerProfile:
+    customer_id: str
+    name: str
+    tier: str  # "premium", "standard", "basic"
+    previous_issues: List[str]
+    account_status: str
+
+@dataclass 
+class SupportTicket:
+    ticket_id: str
+    customer_id: str
+    category: str
+    priority: str
+    description: str
+    created_at: datetime
+    status: str = "open"
+
+class SupportMetricsCallback(BaseCallbackHandler):
+    """Callback to track support chatbot metrics"""
+    
+    def __init__(self):
+        self.metrics = {
+            "total_queries": 0,
+            "resolved_queries": 0,
+            "escalated_queries": 0,
+            "avg_response_time": 0.0,
+            "knowledge_base_hits": 0
+        }
+        self.start_time = None
+    
+    def on_chain_start(self, serialized: Dict[str, Any], inputs: Dict[str, Any], **kwargs):
+        self.start_time = datetime.now()
+        self.metrics["total_queries"] += 1
+    
+    def on_chain_end(self, outputs: Dict[str, Any], **kwargs):
+        if self.start_time:
+            response_time = (datetime.now() - self.start_time).total_seconds()
+            current_avg = self.metrics["avg_response_time"]
+            total = self.metrics["total_queries"]
+            self.metrics["avg_response_time"] = ((current_avg * (total - 1)) + response_time) / total
+
+class CustomerSupportChatbot:
+    """Production-ready customer support chatbot with knowledge base integration"""
+    
+    def __init__(self, knowledge_base_path: str, persist_directory: str = "support_vectordb"):
+        self.llm = ChatOpenAI(
+            temperature=0.1,
+            model="gpt-3.5-turbo-16k"
+        )
+        self.embeddings = OpenAIEmbeddings()
+        self.persist_directory = persist_directory
+        self.metrics_callback = SupportMetricsCallback()
+        
+        # Load knowledge base
+        self.vectorstore = self._load_knowledge_base(knowledge_base_path)
+        
+        # Setup conversation chain
+        self.memory = ConversationBufferWindowMemory(
+            memory_key="chat_history",
+            return_messages=True,
+            k=10  # Remember last 10 exchanges
+        )
+        
+        # Custom support prompt
+        support_prompt = PromptTemplate(
+            template="""You are a helpful customer support representative. Use the following context from our knowledge base to answer the customer's question. 
+
+Customer Tier: {customer_tier}
+Previous Issues: {previous_issues}
+
+Knowledge Base Context:
+{context}
+
+Chat History:
+{chat_history}
+
+Customer Question: {question}
+
+Instructions:
+- Be professional, empathetic, and helpful
+- Reference specific knowledge base information when applicable
+- For premium customers, offer additional assistance
+- If you cannot resolve the issue, suggest escalation
+- Always ask follow-up questions to better understand the issue
+
+Support Response:""",
+            input_variables=["context", "question", "chat_history", "customer_tier", "previous_issues"]
+        )
+        
+        self.qa_chain = ConversationalRetrievalChain.from_llm(
+            llm=self.llm,
+            retriever=self.vectorstore.as_retriever(search_kwargs={"k": 5}),
+            memory=self.memory,
+            combine_docs_chain_kwargs={"prompt": support_prompt},
+            callbacks=[self.metrics_callback],
+            return_source_documents=True
+        )
+        
+        # Intent classification
+        self.intent_classifier = self._setup_intent_classifier()
+        
+        # Escalation rules
+        self.escalation_keywords = [
+            "refund", "cancel subscription", "billing dispute", 
+            "data breach", "legal", "complaint", "manager", "supervisor"
+        ]
+    
+    def _load_knowledge_base(self, knowledge_base_path: str) -> Chroma:
+        """Load or create knowledge base vector store"""
+        
+        if os.path.exists(self.persist_directory):
+            # Load existing vector store
+            return Chroma(
+                persist_directory=self.persist_directory,
+                embedding_function=self.embeddings
+            )
+        else:
+            # Create new vector store from knowledge base
+            with open(knowledge_base_path, 'r') as file:
+                knowledge_content = file.read()
+            
+            text_splitter = RecursiveCharacterTextSplitter(
+                chunk_size=1000,
+                chunk_overlap=200,
+                separators=["\n\n", "\n", ".", " ", ""]
+            )
+            
+            texts = text_splitter.split_text(knowledge_content)
+            documents = [Document(page_content=text) for text in texts]
+            
+            vectorstore = Chroma.from_documents(
+                documents=documents,
+                embedding=self.embeddings,
+                persist_directory=self.persist_directory
+            )
+            vectorstore.persist()
+            return vectorstore
+    
+    def _setup_intent_classifier(self):
+        """Setup intent classification for routing queries"""
+        intent_prompt = PromptTemplate(
+            template="""Classify the customer support intent from this message:
+
+Message: {message}
+
+Intent categories:
+- technical_issue: Technical problems with product
+- billing_inquiry: Questions about billing or payments  
+- account_management: Account settings, profile changes
+- product_information: Questions about features, pricing
+- complaint: Complaints or negative feedback
+- compliment: Positive feedback or compliments
+- escalation_request: Explicit request to speak to manager/supervisor
+
+Return only the intent category:""",
+            input_variables=["message"]
+        )
+        
+        return intent_prompt | self.llm
+    
+    def classify_intent(self, message: str) -> str:
+        """Classify customer message intent"""
+        try:
+            result = self.intent_classifier.invoke({"message": message})
+            return result.content.strip().lower()
+        except Exception as e:
+            logging.error(f"Intent classification failed: {e}")
+            return "general_inquiry"
+    
+    def should_escalate(self, message: str, intent: str) -> bool:
+        """Determine if query should be escalated to human agent"""
+        
+        # Check for explicit escalation keywords
+        message_lower = message.lower()
+        if any(keyword in message_lower for keyword in self.escalation_keywords):
+            return True
+        
+        # Check intent-based escalation
+        escalation_intents = ["complaint", "escalation_request", "billing_dispute"]
+        if intent in escalation_intents:
+            return True
+        
+        # Check conversation length (too many back-and-forth might need human)
+        if len(self.memory.chat_memory.messages) > 10:
+            return True
+        
+        return False
+    
+    def handle_escalation(self, customer_profile: CustomerProfile, message: str) -> Dict[str, Any]:
+        """Handle escalation to human agent"""
+        ticket = SupportTicket(
+            ticket_id=f"ESC-{datetime.now().strftime('%Y%m%d%H%M%S')}",
+            customer_id=customer_profile.customer_id,
+            category="escalation",
+            priority="high" if customer_profile.tier == "premium" else "medium",
+            description=f"Escalated from chatbot: {message}",
+            created_at=datetime.now()
+        )
+        
+        self.metrics_callback.metrics["escalated_queries"] += 1
+        
+        return {
+            "escalated": True,
+            "ticket": ticket,
+            "message": f"I've created ticket {ticket.ticket_id} and connected you with our human support team. They'll be with you shortly."
+        }
+    
+    def chat(self, message: str, customer_profile: CustomerProfile) -> Dict[str, Any]:
+        """Main chat interface"""
+        
+        # Classify intent
+        intent = self.classify_intent(message)
+        
+        # Check for escalation
+        if self.should_escalate(message, intent):
+            return self.handle_escalation(customer_profile, message)
+        
+        try:
+            # Prepare context for the chain
+            context = {
+                "question": message,
+                "customer_tier": customer_profile.tier,
+                "previous_issues": ", ".join(customer_profile.previous_issues) if customer_profile.previous_issues else "None"
+            }
+            
+            # Get response from chain
+            result = self.qa_chain(context)
+            
+            # Track knowledge base usage
+            if result.get("source_documents"):
+                self.metrics_callback.metrics["knowledge_base_hits"] += 1
+            
+            # Check if response seems to resolve the issue
+            if self._is_resolution_response(result["answer"]):
+                self.metrics_callback.metrics["resolved_queries"] += 1
+            
+            return {
+                "escalated": False,
+                "response": result["answer"],
+                "sources": [doc.page_content[:200] + "..." for doc in result.get("source_documents", [])],
+                "intent": intent,
+                "confidence": self._calculate_confidence(result)
+            }
+            
+        except Exception as e:
+            logging.error(f"Chat processing failed: {e}")
+            return {
+                "escalated": False,
+                "response": "I'm experiencing technical difficulties. Let me connect you with a human agent.",
+                "error": True
+            }
+    
+    def _is_resolution_response(self, response: str) -> bool:
+        """Simple heuristic to determine if response likely resolves the issue"""
+        resolution_indicators = [
+            "should resolve", "fix this", "solution is", "try this",
+            "this will help", "follow these steps"
+        ]
+        return any(indicator in response.lower() for indicator in resolution_indicators)
+    
+    def _calculate_confidence(self, result: Dict[str, Any]) -> float:
+        """Calculate confidence score for the response"""
+        score = 0.5  # Base confidence
+        
+        # Boost confidence if we have source documents
+        if result.get("source_documents"):
+            score += 0.2
+        
+        # Boost confidence based on number of sources
+        num_sources = len(result.get("source_documents", []))
+        score += min(0.2, num_sources * 0.05)
+        
+        # Response length heuristic (longer responses often more helpful)
+        response_length = len(result.get("answer", ""))
+        if response_length > 100:
+            score += 0.1
+        
+        return min(1.0, score)
+    
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get chatbot performance metrics"""
+        return {
+            **self.metrics_callback.metrics,
+            "resolution_rate": (
+                self.metrics_callback.metrics["resolved_queries"] / 
+                max(1, self.metrics_callback.metrics["total_queries"])
+            ),
+            "escalation_rate": (
+                self.metrics_callback.metrics["escalated_queries"] / 
+                max(1, self.metrics_callback.metrics["total_queries"])
+            )
+        }
+    
+    def reset_conversation(self):
+        """Reset conversation memory"""
+        self.memory.clear()
+
+def create_sample_knowledge_base():
+    """Create sample knowledge base for demonstration"""
+    knowledge_base = """
+# Customer Support Knowledge Base
+
+## Account Management
+
+### How to reset password
+1. Go to login page and click "Forgot Password"
+2. Enter your email address
+3. Check your email for reset link
+4. Follow the link and create new password
+5. Password must be at least 8 characters with numbers and letters
+
+### How to update billing information  
+1. Log into your account
+2. Navigate to Account Settings > Billing
+3. Click "Update Payment Method"
+4. Enter new credit card or bank account details
+5. Save changes - you'll see confirmation
+
+## Technical Issues
+
+### App won't load or crashes
+First try these basic troubleshooting steps:
+1. Close and reopen the app
+2. Restart your device
+3. Check your internet connection
+4. Update to latest app version
+5. Clear app cache (Android) or reinstall (iOS)
+
+If problem persists, it may be a server issue. Check our status page or contact support.
+
+### Slow performance
+Performance issues can be caused by:
+- Poor internet connection
+- Device storage running low  
+- Too many apps running in background
+- Outdated app version
+
+Try closing other apps and freeing up storage space.
+
+## Billing and Subscriptions
+
+### Subscription tiers
+- Basic: $9.99/month - Core features
+- Premium: $19.99/month - Advanced features + priority support  
+- Enterprise: $49.99/month - All features + dedicated account manager
+
+### Refund policy
+- Full refund within 30 days of purchase
+- Prorated refunds for annual subscriptions
+- No refunds for partial months
+- Enterprise customers have custom refund terms
+
+### Billing cycle and charges
+- Subscriptions renew automatically each month/year
+- Charges appear 1-3 business days before renewal date
+- Failed payments result in 7-day grace period
+- Account suspended after grace period expires
+
+## Product Features
+
+### Data export
+Premium and Enterprise customers can export their data:
+1. Go to Account Settings > Data Export
+2. Select data types to include
+3. Choose export format (CSV, JSON, PDF)  
+4. Click "Generate Export" - you'll get email when ready
+5. Download link expires after 48 hours
+
+### Integration capabilities
+Our API supports integration with:
+- CRM systems (Salesforce, HubSpot)
+- Analytics platforms (Google Analytics, Mixpanel)
+- Communication tools (Slack, Teams)
+- Custom applications via REST API
+
+Enterprise customers get dedicated integration support.
+"""
+    
+    with open("support_knowledge_base.txt", "w") as f:
+        f.write(knowledge_base)
+    
+    return "support_knowledge_base.txt"
+
+def simulate_customer_conversations():
+    """Simulate realistic customer support conversations"""
+    
+    # Create sample knowledge base
+    kb_path = create_sample_knowledge_base()
+    
+    # Initialize chatbot
+    chatbot = CustomerSupportChatbot(kb_path)
+    
+    # Sample customer profiles
+    customers = [
+        CustomerProfile(
+            customer_id="CUST-001",
+            name="Alice Johnson", 
+            tier="premium",
+            previous_issues=["billing inquiry", "password reset"],
+            account_status="active"
+        ),
+        CustomerProfile(
+            customer_id="CUST-002", 
+            name="Bob Smith",
+            tier="basic",
+            previous_issues=[],
+            account_status="active"
+        ),
+        CustomerProfile(
+            customer_id="CUST-003",
+            name="Carol Williams",
+            tier="enterprise", 
+            previous_issues=["integration support", "data export"],
+            account_status="active"
+        )
+    ]
+    
+    # Sample conversations
+    conversations = [
+        {
+            "customer": customers[0],
+            "messages": [
+                "Hi, I'm having trouble logging into my account",
+                "I tried the forgot password but didn't receive an email",
+                "Yes, I checked my spam folder too"
+            ]
+        },
+        {
+            "customer": customers[1], 
+            "messages": [
+                "The app keeps crashing on my phone",
+                "I'm using an iPhone 12 with iOS 15",
+                "I tried restarting but it didn't help"
+            ]
+        },
+        {
+            "customer": customers[2],
+            "messages": [
+                "I need help setting up the Salesforce integration", 
+                "We're an enterprise customer and need this working ASAP",
+                "Can I speak to our dedicated account manager?"
+            ]
+        }
+    ]
+    
+    print("Customer Support Chatbot Demonstration")
+    print("=" * 50)
+    
+    for i, conversation in enumerate(conversations, 1):
+        print(f"\n--- Conversation {i}: {conversation['customer'].name} ({conversation['customer'].tier}) ---")
+        
+        # Reset conversation for each customer
+        chatbot.reset_conversation()
+        
+        for message in conversation["messages"]:
+            print(f"\nCustomer: {message}")
+            
+            response = chatbot.chat(message, conversation["customer"])
+            
+            if response["escalated"]:
+                print(f"System: {response['message']}")
+                print(f"Ticket ID: {response['ticket'].ticket_id}")
+                break
+            else:
+                print(f"Chatbot: {response['response']}")
+                if response.get("sources"):
+                    print("📚 Knowledge base sources referenced:")
+                    for j, source in enumerate(response["sources"][:2], 1):
+                        print(f"   {j}. {source}")
+        
+        print(f"\nConversation completed for {conversation['customer'].name}")
+    
+    # Show metrics
+    print(f"\n--- Chatbot Performance Metrics ---")
+    metrics = chatbot.get_metrics()
+    for key, value in metrics.items():
+        if isinstance(value, float):
+            print(f"{key}: {value:.2%}")
+        else:
+            print(f"{key}: {value}")
+
+def main():
+    """Run customer support chatbot demonstration"""
+    print("Setting up Customer Support Chatbot...")
+    
+    if not os.getenv("OPENAI_API_KEY"):
+        print("Please set OPENAI_API_KEY environment variable")
+        return
+    
+    try:
+        simulate_customer_conversations()
+        print("\n✅ Customer support demonstration completed!")
+        
+    except Exception as e:
+        print(f"❌ Error in customer support demo: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    main()
+```
+
+### 11.2 Document Analysis and Q&A System
+
+An intelligent document analysis system for processing legal documents, contracts, and research papers.
+
+```python
+# ai/langchain/examples/11_document_analyzer.py
+
+import os
+from typing import Dict, List, Optional, Any, Tuple
+from dataclasses import dataclass
+from datetime import datetime
+import json
+import PyPDF2
+import docx
+from io import BytesIO
+
+from langchain.chat_models import ChatOpenAI
+from langchain.embeddings.openai import OpenAIEmbeddings
+from langchain.vectorstores import Chroma
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.chains import RetrievalQA, AnalyzeDocumentChain
+from langchain.chains.summarize import load_summarize_chain
+from langchain.prompts import PromptTemplate
+from langchain.schema import Document
+from langchain.document_loaders import UnstructuredFileLoader
+
+@dataclass
+class DocumentMetadata:
+    filename: str
+    file_type: str
+    pages: int
+    word_count: int
+    upload_date: datetime
+    processed: bool = False
+
+@dataclass 
+class AnalysisResult:
+    document_id: str
+    summary: str
+    key_points: List[str]
+    entities: List[Dict[str, Any]]
+    topics: List[str]
+    sentiment: str
+    confidence_score: float
+
+class DocumentProcessor:
+    """Handles document loading and preprocessing"""
+    
+    def __init__(self):
+        self.supported_formats = ['.pdf', '.docx', '.txt', '.md']
+        self.text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=1000,
+            chunk_overlap=200,
+            separators=["\n\n", "\n", ".", "!", "?", " ", ""]
+        )
+    
+    def load_document(self, file_path: str) -> Tuple[str, DocumentMetadata]:
+        """Load document and extract metadata"""
+        
+        file_extension = os.path.splitext(file_path.lower())[1]
+        
+        if file_extension == '.pdf':
+            return self._load_pdf(file_path)
+        elif file_extension == '.docx':
+            return self._load_docx(file_path)
+        elif file_extension in ['.txt', '.md']:
+            return self._load_text(file_path)
+        else:
+            raise ValueError(f"Unsupported file format: {file_extension}")
+    
+    def _load_pdf(self, file_path: str) -> Tuple[str, DocumentMetadata]:
+        """Load PDF document"""
+        with open(file_path, 'rb') as file:
+            reader = PyPDF2.PdfReader(file)
+            text = ""
+            for page in reader.pages:
+                text += page.extract_text() + "\n"
+            
+            metadata = DocumentMetadata(
+                filename=os.path.basename(file_path),
+                file_type="pdf",
+                pages=len(reader.pages),
+                word_count=len(text.split()),
+                upload_date=datetime.now()
+            )
+            
+            return text, metadata
+    
+    def _load_docx(self, file_path: str) -> Tuple[str, DocumentMetadata]:
+        """Load Word document"""
+        doc = docx.Document(file_path)
+        text = "\n".join([paragraph.text for paragraph in doc.paragraphs])
+        
+        metadata = DocumentMetadata(
+            filename=os.path.basename(file_path),
+            file_type="docx", 
+            pages=1,  # Word doesn't have clear page breaks
+            word_count=len(text.split()),
+            upload_date=datetime.now()
+        )
+        
+        return text, metadata
+    
+    def _load_text(self, file_path: str) -> Tuple[str, DocumentMetadata]:
+        """Load text document"""
+        with open(file_path, 'r', encoding='utf-8') as file:
+            text = file.read()
+            
+            metadata = DocumentMetadata(
+                filename=os.path.basename(file_path),
+                file_type=os.path.splitext(file_path)[1][1:],
+                pages=1,
+                word_count=len(text.split()),
+                upload_date=datetime.now()
+            )
+            
+            return text, metadata
+    
+    def chunk_document(self, text: str, metadata: DocumentMetadata) -> List[Document]:
+        """Split document into chunks for processing"""
+        chunks = self.text_splitter.split_text(text)
+        
+        documents = []
+        for i, chunk in enumerate(chunks):
+            doc = Document(
+                page_content=chunk,
+                metadata={
+                    "filename": metadata.filename,
+                    "chunk_id": i,
+                    "total_chunks": len(chunks),
+                    "file_type": metadata.file_type,
+                    "word_count": len(chunk.split())
+                }
+            )
+            documents.append(doc)
+        
+        return documents
+
+class DocumentAnalyzer:
+    """Advanced document analysis and Q&A system"""
+    
+    def __init__(self, persist_directory: str = "document_vectordb"):
+        self.llm = ChatOpenAI(
+            temperature=0,
+            model="gpt-3.5-turbo-16k"
+        )
+        self.embeddings = OpenAIEmbeddings()
+        self.persist_directory = persist_directory
+        self.processor = DocumentProcessor()
+        
+        # Initialize vector store
+        self.vectorstore = Chroma(
+            persist_directory=persist_directory,
+            embedding_function=self.embeddings
+        )
+        
+        # Setup analysis chains
+        self._setup_analysis_chains()
+        
+        # Document registry
+        self.documents_registry = {}
+    
+    def _setup_analysis_chains(self):
+        """Setup specialized analysis chains"""
+        
+        # Summarization chain
+        summarize_prompt = PromptTemplate(
+            template="""Write a comprehensive summary of the following document:
+
+{text}
+
+Provide a summary that includes:
+1. Main purpose/objective of the document
+2. Key arguments or findings
+3. Important details and supporting evidence
+4. Conclusions or recommendations
+
+Summary:""",
+            input_variables=["text"]
+        )
+        
+        self.summarize_chain = load_summarize_chain(
+            self.llm,
+            chain_type="map_reduce",
+            map_prompt=summarize_prompt,
+            combine_prompt=summarize_prompt
+        )
+        
+        # Entity extraction chain
+        entity_prompt = PromptTemplate(
+            template="""Extract key entities from the following text:
+
+{text}
+
+Identify and categorize entities:
+- PERSON: Names of people
+- ORGANIZATION: Company names, institutions
+- LOCATION: Places, addresses, countries
+- DATE: Dates and time periods  
+- MONEY: Monetary amounts
+- LEGAL: Legal terms, case names, statutes
+- TECHNICAL: Technical terms, product names
+
+Return as JSON format:
+{{"entities": [{{"text": "entity", "category": "CATEGORY", "context": "surrounding context"}}]}}
+
+Entities:""",
+            input_variables=["text"]
+        )
+        
+        self.entity_chain = entity_prompt | self.llm
+        
+        # Topic extraction
+        topic_prompt = PromptTemplate(
+            template="""Analyze the following document and identify the main topics:
+
+{text}
+
+Extract 5-10 key topics that best describe the content. Topics should be:
+- Specific and descriptive
+- Relevant to the main content
+- Useful for categorization
+
+Return as a comma-separated list:
+
+Topics:""",
+            input_variables=["text"]
+        )
+        
+        self.topic_chain = topic_prompt | self.llm
+        
+        # Q&A chain
+        qa_prompt = PromptTemplate(
+            template="""Use the following context to answer the question. If you cannot answer based on the context provided, say so explicitly.
+
+Context: {context}
+
+Question: {question}
+
+Provide a detailed answer with references to specific parts of the document when possible:
+
+Answer:""",
+            input_variables=["context", "question"]
+        )
+        
+        self.qa_chain = RetrievalQA.from_chain_type(
+            llm=self.llm,
+            chain_type="stuff",
+            retriever=self.vectorstore.as_retriever(search_kwargs={"k": 5}),
+            chain_type_kwargs={"prompt": qa_prompt},
+            return_source_documents=True
+        )
+    
+    def add_document(self, file_path: str) -> str:
+        """Add document to the analysis system"""
+        
+        # Load and process document
+        text, metadata = self.processor.load_document(file_path)
+        chunks = self.processor.chunk_document(text, metadata)
+        
+        # Generate document ID
+        doc_id = f"doc_{len(self.documents_registry) + 1}_{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        
+        # Add metadata to chunks
+        for chunk in chunks:
+            chunk.metadata["document_id"] = doc_id
+        
+        # Add to vector store
+        self.vectorstore.add_documents(chunks)
+        self.vectorstore.persist()
+        
+        # Register document
+        metadata.processed = True
+        self.documents_registry[doc_id] = {
+            "metadata": metadata,
+            "text": text,
+            "chunks": len(chunks)
+        }
+        
+        return doc_id
+    
+    def analyze_document(self, doc_id: str) -> AnalysisResult:
+        """Perform comprehensive document analysis"""
+        
+        if doc_id not in self.documents_registry:
+            raise ValueError(f"Document {doc_id} not found")
+        
+        document_data = self.documents_registry[doc_id]
+        text = document_data["text"]
+        
+        try:
+            # Generate summary
+            summary_result = self.summarize_chain.invoke({"input_documents": [Document(page_content=text)]})
+            summary = summary_result["output_text"]
+            
+            # Extract entities
+            entity_result = self.entity_chain.invoke({"text": text[:4000]})  # Limit for token constraints
+            try:
+                entities_data = json.loads(entity_result.content)
+                entities = entities_data.get("entities", [])
+            except json.JSONDecodeError:
+                entities = []
+            
+            # Extract topics
+            topic_result = self.topic_chain.invoke({"text": text[:4000]})
+            topics = [topic.strip() for topic in topic_result.content.split(",")]
+            
+            # Simple sentiment analysis
+            sentiment = self._analyze_sentiment(text[:2000])
+            
+            # Calculate confidence based on document length and processing success
+            confidence = self._calculate_confidence(len(text), summary, entities, topics)
+            
+            # Extract key points from summary
+            key_points = self._extract_key_points(summary)
+            
+            return AnalysisResult(
+                document_id=doc_id,
+                summary=summary,
+                key_points=key_points,
+                entities=entities,
+                topics=topics,
+                sentiment=sentiment,
+                confidence_score=confidence
+            )
+            
+        except Exception as e:
+            print(f"Analysis failed for {doc_id}: {e}")
+            return AnalysisResult(
+                document_id=doc_id,
+                summary="Analysis failed",
+                key_points=[],
+                entities=[],
+                topics=[],
+                sentiment="unknown",
+                confidence_score=0.0
+            )
+    
+    def _analyze_sentiment(self, text: str) -> str:
+        """Basic sentiment analysis"""
+        sentiment_prompt = PromptTemplate(
+            template="""Analyze the overall sentiment/tone of this document:
+
+{text}
+
+Classify as one of: positive, negative, neutral, formal, technical, legal
+
+Sentiment:""",
+            input_variables=["text"]
+        )
+        
+        try:
+            result = (sentiment_prompt | self.llm).invoke({"text": text})
+            return result.content.strip().lower()
+        except:
+            return "neutral"
+    
+    def _extract_key_points(self, summary: str) -> List[str]:
+        """Extract key points from summary"""
+        key_points_prompt = PromptTemplate(
+            template="""From the following summary, extract 5-7 key points as bullet points:
+
+{summary}
+
+Key Points:""",
+            input_variables=["summary"]
+        )
+        
+        try:
+            result = (key_points_prompt | self.llm).invoke({"summary": summary})
+            points = [point.strip("- ").strip() for point in result.content.split("\n") if point.strip()]
+            return [point for point in points if len(point) > 10][:7]
+        except:
+            return []
+    
+    def _calculate_confidence(self, text_length: int, summary: str, entities: List, topics: List) -> float:
+        """Calculate confidence score for analysis"""
+        confidence = 0.5  # Base confidence
+        
+        # Text length factor
+        if text_length > 1000:
+            confidence += 0.1
+        if text_length > 5000:
+            confidence += 0.1
+        
+        # Analysis completeness
+        if len(summary) > 100:
+            confidence += 0.1
+        if len(entities) > 0:
+            confidence += 0.1
+        if len(topics) > 2:
+            confidence += 0.1
+        
+        return min(1.0, confidence)
+    
+    def ask_question(self, question: str, doc_id: Optional[str] = None) -> Dict[str, Any]:
+        """Ask questions about documents"""
+        
+        if doc_id:
+            # Filter retriever for specific document
+            filtered_retriever = self.vectorstore.as_retriever(
+                search_kwargs={
+                    "k": 5,
+                    "filter": {"document_id": doc_id}
+                }
+            )
+            
+            qa_chain = RetrievalQA.from_chain_type(
+                llm=self.llm,
+                chain_type="stuff", 
+                retriever=filtered_retriever,
+                return_source_documents=True
+            )
+            
+            result = qa_chain({"query": question})
+        else:
+            # Search across all documents
+            result = self.qa_chain({"query": question})
+        
+        return {
+            "question": question,
+            "answer": result["result"],
+            "sources": [
+                {
+                    "content": doc.page_content[:200] + "...",
+                    "filename": doc.metadata.get("filename", "unknown"),
+                    "chunk_id": doc.metadata.get("chunk_id", 0)
+                }
+                for doc in result["source_documents"]
+            ],
+            "confidence": len(result["source_documents"]) / 5.0  # Simple confidence metric
+        }
+    
+    def get_document_list(self) -> List[Dict[str, Any]]:
+        """Get list of all processed documents"""
+        return [
+            {
+                "doc_id": doc_id,
+                "filename": data["metadata"].filename,
+                "file_type": data["metadata"].file_type,
+                "pages": data["metadata"].pages,
+                "word_count": data["metadata"].word_count,
+                "upload_date": data["metadata"].upload_date.isoformat(),
+                "chunks": data["chunks"]
+            }
+            for doc_id, data in self.documents_registry.items()
+        ]
+    
+    def compare_documents(self, doc_id1: str, doc_id2: str) -> Dict[str, Any]:
+        """Compare two documents"""
+        
+        if doc_id1 not in self.documents_registry or doc_id2 not in self.documents_registry:
+            raise ValueError("One or both documents not found")
+        
+        doc1_data = self.documents_registry[doc_id1]
+        doc2_data = self.documents_registry[doc_id2]
+        
+        comparison_prompt = PromptTemplate(
+            template="""Compare these two documents and provide a detailed analysis:
+
+Document 1 ({filename1}):
+{text1}
+
+Document 2 ({filename2}):
+{text2}
+
+Provide comparison covering:
+1. Similarities in content and themes
+2. Key differences and contrasts  
+3. Writing style and tone differences
+4. Unique aspects of each document
+5. Overall relationship between documents
+
+Comparison Analysis:""",
+            input_variables=["filename1", "text1", "filename2", "text2"]
+        )
+        
+        # Limit text for API constraints
+        text1 = doc1_data["text"][:3000]
+        text2 = doc2_data["text"][:3000]
+        
+        try:
+            result = (comparison_prompt | self.llm).invoke({
+                "filename1": doc1_data["metadata"].filename,
+                "text1": text1,
+                "filename2": doc2_data["metadata"].filename,
+                "text2": text2
+            })
+            
+            return {
+                "doc1": {
+                    "id": doc_id1,
+                    "filename": doc1_data["metadata"].filename
+                },
+                "doc2": {
+                    "id": doc_id2,
+                    "filename": doc2_data["metadata"].filename
+                },
+                "comparison": result.content
+            }
+            
+        except Exception as e:
+            return {
+                "error": f"Comparison failed: {e}"
+            }
+
+def create_sample_documents():
+    """Create sample documents for testing"""
+    
+    # Sample business proposal
+    proposal = """
+# Business Proposal: AI-Powered Customer Analytics Platform
+
+## Executive Summary
+
+Our company proposes to develop an AI-powered customer analytics platform that will revolutionize how businesses understand and engage with their customers. The platform will leverage machine learning algorithms to provide real-time insights, predictive analytics, and personalized recommendations.
+
+## Market Opportunity
+
+The global customer analytics market is projected to reach $24.2 billion by 2025, growing at a CAGR of 15.3%. Current solutions in the market lack the sophisticated AI capabilities and real-time processing power that modern businesses require.
+
+## Proposed Solution
+
+### Core Features
+1. Real-time customer behavior tracking
+2. Predictive churn analysis
+3. Personalized product recommendations
+4. Automated marketing campaign optimization
+5. Customer lifetime value prediction
+
+### Technical Architecture
+- Cloud-native architecture on AWS/Azure
+- Machine learning pipeline using Python/TensorFlow
+- Real-time data processing with Apache Kafka
+- RESTful APIs for third-party integrations
+- Advanced visualization dashboard
+
+## Financial Projections
+
+Year 1: $2.5M revenue, $1.8M expenses
+Year 2: $6.2M revenue, $3.1M expenses  
+Year 3: $12.8M revenue, $5.2M expenses
+
+Break-even expected in Month 18.
+
+## Team Requirements
+
+- 5 Software Engineers
+- 2 Data Scientists
+- 2 Product Managers
+- 1 UI/UX Designer
+- 3 Sales Representatives
+
+## Implementation Timeline
+
+Phase 1 (Months 1-6): MVP development
+Phase 2 (Months 7-12): Beta testing and refinement
+Phase 3 (Months 13-18): Market launch and scaling
+
+## Conclusion
+
+This AI-powered platform represents a significant opportunity to capture market share in the rapidly growing customer analytics space. We request $5M in Series A funding to bring this vision to reality.
+"""
+    
+    # Sample legal contract
+    contract = """
+# SOFTWARE DEVELOPMENT AGREEMENT
+
+This Software Development Agreement ("Agreement") is entered into on January 15, 2024, between TechCorp Inc., a Delaware corporation ("Client"), and DevSolutions LLC, a California limited liability company ("Developer").
+
+## 1. SCOPE OF WORK
+
+Developer agrees to develop a custom customer relationship management (CRM) software application according to the specifications outlined in Exhibit A, which is incorporated herein by reference.
+
+### 1.1 Deliverables
+- Web-based CRM application
+- Mobile companion app (iOS and Android)
+- API documentation
+- User training materials
+- 90 days of post-launch support
+
+### 1.2 Timeline
+Development shall commence on February 1, 2024, with final delivery expected by August 31, 2024.
+
+## 2. COMPENSATION
+
+Client agrees to pay Developer a total fee of $485,000 according to the following schedule:
+- 25% ($121,250) upon signing this Agreement
+- 25% ($121,250) upon completion of design phase
+- 25% ($121,250) upon completion of development phase  
+- 25% ($121,250) upon final delivery and acceptance
+
+## 3. INTELLECTUAL PROPERTY
+
+All software code, documentation, and related materials developed under this Agreement shall be the exclusive property of Client. Developer retains no rights to the delivered work product.
+
+## 4. CONFIDENTIALITY
+
+Both parties acknowledge that they may have access to confidential information and agree to maintain strict confidentiality for a period of 5 years following termination of this Agreement.
+
+## 5. WARRANTIES AND LIABILITY
+
+Developer warrants that the delivered software will be free from material defects for 90 days. Developer's total liability shall not exceed the total compensation paid under this Agreement.
+
+## 6. TERMINATION
+
+Either party may terminate this Agreement with 30 days written notice. Upon termination, Client shall pay for all work completed to date.
+
+## 7. GOVERNING LAW
+
+This Agreement shall be governed by the laws of the State of California.
+
+IN WITNESS WHEREOF, the parties have executed this Agreement on the date first written above.
+
+TECHCORP INC.                    DEVSOLUTIONS LLC
+
+_____________________          _____________________
+John Smith, CEO                 Sarah Johnson, Managing Director
+Date: _______________          Date: _______________
+"""
+    
+    # Save sample documents
+    with open("business_proposal.txt", "w") as f:
+        f.write(proposal)
+    
+    with open("software_contract.txt", "w") as f:
+        f.write(contract)
+    
+    return ["business_proposal.txt", "software_contract.txt"]
+
+def demonstrate_document_analysis():
+    """Demonstrate the document analysis system"""
+    
+    print("Document Analysis System Demonstration")
+    print("=" * 50)
+    
+    # Create sample documents
+    sample_docs = create_sample_documents()
+    
+    # Initialize analyzer
+    analyzer = DocumentAnalyzer()
+    
+    # Add documents
+    doc_ids = []
+    for doc_path in sample_docs:
+        print(f"\n📄 Adding document: {doc_path}")
+        doc_id = analyzer.add_document(doc_path)
+        doc_ids.append(doc_id)
+        print(f"   Document ID: {doc_id}")
+    
+    # Show document list
+    print(f"\n📋 Processed Documents:")
+    docs = analyzer.get_document_list()
+    for doc in docs:
+        print(f"   {doc['filename']}: {doc['word_count']} words, {doc['chunks']} chunks")
+    
+    # Analyze each document
+    for doc_id in doc_ids:
+        print(f"\n🔍 Analyzing document: {doc_id}")
+        analysis = analyzer.analyze_document(doc_id)
+        
+        print(f"   Summary: {analysis.summary[:200]}...")
+        print(f"   Key Points:")
+        for point in analysis.key_points[:3]:
+            print(f"     • {point}")
+        print(f"   Topics: {', '.join(analysis.topics[:5])}")
+        print(f"   Sentiment: {analysis.sentiment}")
+        print(f"   Confidence: {analysis.confidence_score:.2%}")
+        
+        if analysis.entities:
+            print(f"   Entities found: {len(analysis.entities)}")
+            for entity in analysis.entities[:3]:
+                print(f"     • {entity.get('text', '')} ({entity.get('category', '')})")
+    
+    # Demonstrate Q&A
+    questions = [
+        "What is the total funding amount requested?",
+        "What are the payment terms in the contract?",
+        "What is the projected revenue for Year 2?",
+        "Who are the parties in the software development agreement?"
+    ]
+    
+    print(f"\n❓ Question & Answer Demonstration:")
+    for question in questions:
+        print(f"\nQ: {question}")
+        result = analyzer.ask_question(question)
+        print(f"A: {result['answer']}")
+        if result['sources']:
+            print(f"   Source: {result['sources'][0]['filename']}")
+    
+    # Document comparison
+    if len(doc_ids) >= 2:
+        print(f"\n🔄 Comparing documents...")
+        comparison = analyzer.compare_documents(doc_ids[0], doc_ids[1])
+        print(f"Comparison between {comparison['doc1']['filename']} and {comparison['doc2']['filename']}:")
+        print(f"{comparison['comparison'][:400]}...")
+
+def main():
+    """Run document analysis demonstration"""
+    
+    if not os.getenv("OPENAI_API_KEY"):
+        print("Please set OPENAI_API_KEY environment variable")
+        return
+    
+    try:
+        demonstrate_document_analysis()
+        print("\n✅ Document analysis demonstration completed!")
+        
+    except Exception as e:
+        print(f"❌ Error in document analysis demo: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    main()
+```
+
+### 11.3 Automated Content Generation System
+
+A comprehensive content creation system for blogs, marketing materials, and social media content.
+
+```python
+# ai/langchain/examples/11_content_generator.py
+
+import os
+from typing import Dict, List, Optional, Any, Union
+from dataclasses import dataclass
+from datetime import datetime, timedelta
+from enum import Enum
+import json
+import random
+
+from langchain.chat_models import ChatOpenAI
+from langchain.prompts import PromptTemplate, ChatPromptTemplate
+from langchain.chains import LLMChain, SequentialChain
+from langchain.output_parsers import PydanticOutputParser, OutputFixingParser
+from langchain.schema import BaseOutputParser
+from pydantic import BaseModel, Field
+
+class ContentType(Enum):
+    BLOG_POST = "blog_post"
+    SOCIAL_MEDIA = "social_media"
+    EMAIL_NEWSLETTER = "email_newsletter"
+    PRODUCT_DESCRIPTION = "product_description"
+    PRESS_RELEASE = "press_release"
+    AD_COPY = "ad_copy"
+
+class Platform(Enum):
+    TWITTER = "twitter"
+    LINKEDIN = "linkedin"
+    FACEBOOK = "facebook"
+    INSTAGRAM = "instagram"
+    YOUTUBE = "youtube"
+
+@dataclass
+class ContentBrief:
+    topic: str
+    content_type: ContentType
+    target_audience: str
+    tone: str  # professional, casual, humorous, technical, etc.
+    keywords: List[str]
+    word_count: int
+    platform: Optional[Platform] = None
+    call_to_action: Optional[str] = None
+    deadline: Optional[datetime] = None
+
+class GeneratedContent(BaseModel):
+    title: str = Field(description="Content title/headline")
+    content: str = Field(description="Main content body")
+    summary: str = Field(description="Brief summary/excerpt")
+    hashtags: List[str] = Field(description="Relevant hashtags")
+    seo_keywords: List[str] = Field(description="SEO-optimized keywords")
+    estimated_reading_time: int = Field(description="Reading time in minutes")
+
+class SocialMediaPost(BaseModel):
+    content: str = Field(description="Post content")
+    hashtags: List[str] = Field(description="Relevant hashtags")
+    best_posting_time: str = Field(description="Optimal posting time")
+    engagement_prediction: str = Field(description="Expected engagement level")
+
+class EmailNewsletter(BaseModel):
+    subject_line: str = Field(description="Email subject line")
+    preview_text: str = Field(description="Email preview text")
+    content_sections: List[Dict[str, str]] = Field(description="Newsletter sections")
+    call_to_action: str = Field(description="Main CTA")
+
+class ContentOptimizer:
+    """Optimizes content for specific platforms and purposes"""
+    
+    def __init__(self):
+        self.platform_limits = {
+            Platform.TWITTER: {"char_limit": 280, "hashtag_limit": 3},
+            Platform.LINKEDIN: {"char_limit": 1300, "hashtag_limit": 5},
+            Platform.FACEBOOK: {"char_limit": 500, "hashtag_limit": 5},
+            Platform.INSTAGRAM: {"char_limit": 2200, "hashtag_limit": 10},
+        }
+        
+        self.tone_guidelines = {
+            "professional": "formal, authoritative, industry-specific terminology",
+            "casual": "conversational, friendly, accessible language",
+            "humorous": "light-hearted, witty, engaging",
+            "technical": "precise, detailed, expert-level",
+            "inspirational": "motivating, uplifting, action-oriented"
+        }
+    
+    def optimize_for_platform(self, content: str, platform: Platform) -> str:
+        """Optimize content for specific social media platform"""
+        limits = self.platform_limits.get(platform, {})
+        char_limit = limits.get("char_limit", 1000)
+        
+        if len(content) <= char_limit:
+            return content
+        
+        # Truncate intelligently at sentence boundaries
+        sentences = content.split('. ')
+        optimized = ""
+        
+        for sentence in sentences:
+            if len(optimized + sentence + ". ") <= char_limit - 10:  # Leave room for ellipsis
+                optimized += sentence + ". "
+            else:
+                optimized += "..."
+                break
+        
+        return optimized.strip()
+    
+    def generate_hashtags(self, content: str, keywords: List[str], platform: Platform) -> List[str]:
+        """Generate platform-optimized hashtags"""
+        hashtag_limit = self.platform_limits.get(platform, {}).get("hashtag_limit", 5)
+        
+        # Start with keywords
+        hashtags = [f"#{keyword.replace(' ', '').lower()}" for keyword in keywords]
+        
+        # Add common industry hashtags based on content analysis
+        content_lower = content.lower()
+        
+        if "ai" in content_lower or "artificial intelligence" in content_lower:
+            hashtags.extend(["#AI", "#ArtificialIntelligence", "#MachineLearning"])
+        if "business" in content_lower:
+            hashtags.extend(["#Business", "#Entrepreneur", "#Growth"])
+        if "tech" in content_lower or "technology" in content_lower:
+            hashtags.extend(["#Technology", "#Innovation", "#Digital"])
+        
+        # Remove duplicates and limit
+        hashtags = list(set(hashtags))[:hashtag_limit]
+        
+        return hashtags
+
+class ContentGenerator:
+    """Advanced content generation system with optimization"""
+    
+    def __init__(self, model: str = "gpt-3.5-turbo-16k"):
+        self.llm = ChatOpenAI(temperature=0.7, model=model)
+        self.optimizer = ContentOptimizer()
+        self._setup_chains()
+    
+    def _setup_chains(self):
+        """Setup specialized content generation chains"""
+        
+        # Blog post chain
+        blog_prompt = ChatPromptTemplate.from_template("""
+You are an expert content writer. Create a comprehensive blog post based on the following brief:
+
+Topic: {topic}
+Target Audience: {target_audience}
+Tone: {tone}
+Keywords to include: {keywords}
+Word count target: {word_count}
+
+Write a blog post that includes:
+1. Engaging title
+2. Introduction that hooks the reader
+3. Well-structured body with subheadings
+4. Practical insights and examples
+5. Strong conclusion with call-to-action
+
+Blog Post:""")
+        
+        self.blog_chain = LLMChain(llm=self.llm, prompt=blog_prompt, output_key="blog_content")
+        
+        # Social media chain
+        social_prompt = ChatPromptTemplate.from_template("""
+Create engaging social media content for {platform}:
+
+Topic: {topic}
+Target Audience: {target_audience}
+Tone: {tone}
+Character limit: {char_limit}
+Keywords: {keywords}
+
+Requirements:
+- Engaging and shareable
+- Include relevant hashtags
+- Strong hook in first line
+- Clear value proposition
+- Appropriate for {platform} audience
+
+Social Media Post:""")
+        
+        self.social_chain = LLMChain(llm=self.llm, prompt=social_prompt, output_key="social_content")
+        
+        # Email newsletter chain
+        email_prompt = ChatPromptTemplate.from_template("""
+Create an email newsletter based on:
+
+Topic: {topic}
+Target Audience: {target_audience}
+Tone: {tone}
+Keywords: {keywords}
+
+Include:
+1. Compelling subject line
+2. Preview text
+3. Newsletter sections with headers
+4. Call-to-action
+5. Personal touch
+
+Email Newsletter:""")
+        
+        self.email_chain = LLMChain(llm=self.llm, prompt=email_prompt, output_key="email_content")
+        
+        # SEO optimization chain
+        seo_prompt = ChatPromptTemplate.from_template("""
+Optimize the following content for SEO:
+
+Content: {content}
+Primary Keywords: {keywords}
+
+Provide:
+1. SEO-optimized title variations
+2. Meta description
+3. Additional keywords to target
+4. Content improvements for better ranking
+
+SEO Optimization:""")
+        
+        self.seo_chain = LLMChain(llm=self.llm, prompt=seo_prompt, output_key="seo_optimization")
+    
+    def generate_blog_post(self, brief: ContentBrief) -> GeneratedContent:
+        """Generate comprehensive blog post"""
+        
+        # Generate main content
+        result = self.blog_chain.invoke({
+            "topic": brief.topic,
+            "target_audience": brief.target_audience,
+            "tone": brief.tone,
+            "keywords": ", ".join(brief.keywords),
+            "word_count": brief.word_count
+        })
+        
+        content = result["blog_content"]
+        
+        # Extract title (assume first line is title)
+        lines = content.split('\n')
+        title = lines[0].strip('#').strip()
+        body_content = '\n'.join(lines[1:]).strip()
+        
+        # Generate SEO optimization
+        seo_result = self.seo_chain.invoke({
+            "content": content,
+            "keywords": ", ".join(brief.keywords)
+        })
+        
+        # Create summary (first paragraph)
+        paragraphs = body_content.split('\n\n')
+        summary = paragraphs[0][:200] + "..." if len(paragraphs[0]) > 200 else paragraphs[0]
+        
+        # Generate hashtags
+        hashtags = self.optimizer.generate_hashtags(content, brief.keywords, Platform.LINKEDIN)
+        
+        # Estimate reading time (average 200 words per minute)
+        word_count = len(content.split())
+        reading_time = max(1, word_count // 200)
+        
+        return GeneratedContent(
+            title=title,
+            content=body_content,
+            summary=summary,
+            hashtags=hashtags,
+            seo_keywords=brief.keywords,
+            estimated_reading_time=reading_time
+        )
+    
+    def generate_social_media_post(self, brief: ContentBrief) -> SocialMediaPost:
+        """Generate optimized social media post"""
+        
+        if not brief.platform:
+            brief.platform = Platform.LINKEDIN
+        
+        char_limit = self.optimizer.platform_limits.get(brief.platform, {}).get("char_limit", 500)
+        
+        result = self.social_chain.invoke({
+            "topic": brief.topic,
+            "target_audience": brief.target_audience,
+            "tone": brief.tone,
+            "platform": brief.platform.value,
+            "char_limit": char_limit,
+            "keywords": ", ".join(brief.keywords)
+        })
+        
+        content = result["social_content"]
+        
+        # Optimize for platform
+        optimized_content = self.optimizer.optimize_for_platform(content, brief.platform)
+        
+        # Generate hashtags
+        hashtags = self.optimizer.generate_hashtags(content, brief.keywords, brief.platform)
+        
+        # Determine best posting time (simplified)
+        posting_times = {
+            Platform.TWITTER: "1-3 PM weekdays",
+            Platform.LINKEDIN: "7-9 AM weekdays", 
+            Platform.FACEBOOK: "9 AM - 3 PM weekdays",
+            Platform.INSTAGRAM: "6-9 AM weekdays"
+        }
+        
+        best_time = posting_times.get(brief.platform, "Business hours")
+        
+        # Predict engagement (simplified heuristic)
+        engagement_score = len([word for word in optimized_content.lower().split() 
+                               if word in ["question", "tip", "secret", "free", "new", "amazing"]])
+        engagement_levels = ["Low", "Medium", "High", "Very High"]
+        engagement_prediction = engagement_levels[min(engagement_score, 3)]
+        
+        return SocialMediaPost(
+            content=optimized_content,
+            hashtags=hashtags,
+            best_posting_time=best_time,
+            engagement_prediction=engagement_prediction
+        )
+    
+    def generate_email_newsletter(self, brief: ContentBrief) -> EmailNewsletter:
+        """Generate email newsletter"""
+        
+        result = self.email_chain.invoke({
+            "topic": brief.topic,
+            "target_audience": brief.target_audience,
+            "tone": brief.tone,
+            "keywords": ", ".join(brief.keywords)
+        })
+        
+        content = result["email_content"]
+        
+        # Parse the generated content (simplified parsing)
+        lines = content.split('\n')
+        
+        subject_line = "Newsletter Update"
+        preview_text = ""
+        sections = []
+        call_to_action = brief.call_to_action or "Learn More"
+        
+        for i, line in enumerate(lines):
+            line = line.strip()
+            if line.startswith("Subject:"):
+                subject_line = line.replace("Subject:", "").strip()
+            elif line.startswith("Preview:"):
+                preview_text = line.replace("Preview:", "").strip()
+            elif line.startswith("#") and len(line) > 1:
+                # Section header
+                header = line.strip("#").strip()
+                # Look for content in next few lines
+                section_content = ""
+                for j in range(i+1, min(i+5, len(lines))):
+                    if not lines[j].startswith("#") and lines[j].strip():
+                        section_content += lines[j].strip() + " "
+                
+                if section_content:
+                    sections.append({"header": header, "content": section_content.strip()})
+        
+        # Ensure we have at least some sections
+        if not sections:
+            sections = [
+                {"header": "Main Content", "content": content[:500]},
+                {"header": "Key Takeaways", "content": "Important insights from this newsletter."}
+            ]
+        
+        return EmailNewsletter(
+            subject_line=subject_line,
+            preview_text=preview_text or content[:100],
+            content_sections=sections,
+            call_to_action=call_to_action
+        )
+    
+    def generate_content_series(self, main_topic: str, num_pieces: int = 5) -> List[GeneratedContent]:
+        """Generate a series of related content pieces"""
+        
+        # Generate subtopics
+        subtopic_prompt = ChatPromptTemplate.from_template("""
+        Break down the topic "{main_topic}" into {num_pieces} related subtopics that would make great individual content pieces.
+        
+        Each subtopic should be:
+        - Specific and focused
+        - Valuable to the audience
+        - SEO-friendly
+        
+        Return as a numbered list:""")
+        
+        subtopics_result = (subtopic_prompt | self.llm).invoke({
+            "main_topic": main_topic,
+            "num_pieces": num_pieces
+        })
+        
+        # Parse subtopics
+        subtopics = []
+        for line in subtopics_result.content.split('\n'):
+            if line.strip() and (line[0].isdigit() or line.startswith('-')):
+                subtopic = line.strip()
+                # Remove numbering
+                for i, char in enumerate(subtopic):
+                    if char.isalpha():
+                        subtopic = subtopic[i:].strip()
+                        break
+                subtopics.append(subtopic)
+        
+        # Generate content for each subtopic
+        content_series = []
+        for subtopic in subtopics[:num_pieces]:
+            brief = ContentBrief(
+                topic=subtopic,
+                content_type=ContentType.BLOG_POST,
+                target_audience="professionals interested in " + main_topic,
+                tone="professional",
+                keywords=[main_topic.lower(), subtopic.lower()],
+                word_count=800
+            )
+            
+            content = self.generate_blog_post(brief)
+            content_series.append(content)
+        
+        return content_series
+    
+    def batch_generate_content(self, briefs: List[ContentBrief]) -> List[Dict[str, Any]]:
+        """Generate multiple content pieces efficiently"""
+        
+        results = []
+        
+        for i, brief in enumerate(briefs):
+            print(f"Generating content {i+1}/{len(briefs)}: {brief.topic}")
+            
+            try:
+                if brief.content_type == ContentType.BLOG_POST:
+                    content = self.generate_blog_post(brief)
+                    result = {
+                        "type": "blog_post",
+                        "brief": brief,
+                        "content": content,
+                        "success": True
+                    }
+                
+                elif brief.content_type == ContentType.SOCIAL_MEDIA:
+                    content = self.generate_social_media_post(brief)
+                    result = {
+                        "type": "social_media",
+                        "brief": brief,
+                        "content": content,
+                        "success": True
+                    }
+                
+                elif brief.content_type == ContentType.EMAIL_NEWSLETTER:
+                    content = self.generate_email_newsletter(brief)
+                    result = {
+                        "type": "email_newsletter",
+                        "brief": brief,
+                        "content": content,
+                        "success": True
+                    }
+                
+                else:
+                    result = {
+                        "type": brief.content_type.value,
+                        "brief": brief,
+                        "content": None,
+                        "success": False,
+                        "error": "Content type not implemented"
+                    }
+                
+                results.append(result)
+                
+            except Exception as e:
+                results.append({
+                    "type": brief.content_type.value,
+                    "brief": brief,
+                    "content": None,
+                    "success": False,
+                    "error": str(e)
+                })
+        
+        return results
+
+def demonstrate_content_generation():
+    """Demonstrate the content generation system"""
+    
+    print("Automated Content Generation System")
+    print("=" * 50)
+    
+    generator = ContentGenerator()
+    
+    # Demo 1: Blog Post Generation
+    print("\n📝 Generating Blog Post...")
+    blog_brief = ContentBrief(
+        topic="The Future of Artificial Intelligence in Business",
+        content_type=ContentType.BLOG_POST,
+        target_audience="business executives and entrepreneurs", 
+        tone="professional",
+        keywords=["artificial intelligence", "business transformation", "automation", "AI strategy"],
+        word_count=1200,
+        call_to_action="Contact us to learn how AI can transform your business"
+    )
+    
+    blog_post = generator.generate_blog_post(blog_brief)
+    print(f"Title: {blog_post.title}")
+    print(f"Content: {blog_post.content[:300]}...")
+    print(f"Summary: {blog_post.summary}")
+    print(f"Reading Time: {blog_post.estimated_reading_time} minutes")
+    print(f"SEO Keywords: {', '.join(blog_post.seo_keywords)}")
+    print(f"Hashtags: {' '.join(blog_post.hashtags)}")
+    
+    # Demo 2: Social Media Posts
+    print("\n📱 Generating Social Media Posts...")
+    
+    platforms = [Platform.TWITTER, Platform.LINKEDIN, Platform.INSTAGRAM]
+    
+    for platform in platforms:
+        social_brief = ContentBrief(
+            topic="5 AI Tools Every Business Should Know About",
+            content_type=ContentType.SOCIAL_MEDIA,
+            target_audience="small business owners",
+            tone="casual",
+            keywords=["AI tools", "business productivity", "automation"],
+            word_count=0,  # Not applicable for social media
+            platform=platform
+        )
+        
+        social_post = generator.generate_social_media_post(social_brief)
+        print(f"\n{platform.value.upper()} Post:")
+        print(f"Content: {social_post.content}")
+        print(f"Hashtags: {' '.join(social_post.hashtags)}")
+        print(f"Best Time: {social_post.best_posting_time}")
+        print(f"Engagement Prediction: {social_post.engagement_prediction}")
+    
+    # Demo 3: Email Newsletter
+    print("\n📧 Generating Email Newsletter...")
+    email_brief = ContentBrief(
+        topic="Weekly AI & Business Update",
+        content_type=ContentType.EMAIL_NEWSLETTER,
+        target_audience="business professionals interested in AI",
+        tone="professional",
+        keywords=["AI news", "business insights", "technology trends"],
+        word_count=800,
+        call_to_action="Read Full Article"
+    )
+    
+    newsletter = generator.generate_email_newsletter(email_brief)
+    print(f"Subject: {newsletter.subject_line}")
+    print(f"Preview: {newsletter.preview_text}")
+    print(f"Sections: {len(newsletter.content_sections)}")
+    for i, section in enumerate(newsletter.content_sections[:2]):
+        print(f"  Section {i+1}: {section['header']}")
+        print(f"  Content: {section['content'][:100]}...")
+    print(f"CTA: {newsletter.call_to_action}")
+    
+    # Demo 4: Content Series Generation
+    print("\n📚 Generating Content Series...")
+    series = generator.generate_content_series("Machine Learning for Beginners", 3)
+    print(f"Generated {len(series)} pieces in the series:")
+    for i, content in enumerate(series, 1):
+        print(f"  {i}. {content.title}")
+        print(f"     {content.summary[:100]}...")
+    
+    # Demo 5: Batch Content Generation
+    print("\n🔄 Batch Content Generation...")
+    batch_briefs = [
+        ContentBrief(
+            topic=f"AI Trend #{i+1}: {trend}",
+            content_type=ContentType.BLOG_POST,
+            target_audience="tech enthusiasts",
+            tone="casual",
+            keywords=["AI", "technology", "trends"],
+            word_count=600
+        )
+        for i, trend in enumerate(["Natural Language Processing", "Computer Vision", "Robotics"])
+    ]
+    
+    batch_results = generator.batch_generate_content(batch_briefs)
+    successful_generations = [r for r in batch_results if r["success"]]
+    print(f"Successfully generated {len(successful_generations)}/{len(batch_results)} content pieces")
+    
+    for result in successful_generations:
+        content = result["content"]
+        print(f"  ✅ {content.title}")
+
+def main():
+    """Run content generation demonstration"""
+    
+    if not os.getenv("OPENAI_API_KEY"):
+        print("Please set OPENAI_API_KEY environment variable")
+        return
+    
+    try:
+        demonstrate_content_generation()
+        print("\n✅ Content generation demonstration completed!")
+        
+    except Exception as e:
+        print(f"❌ Error in content generation demo: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+## Chapter 12: Testing Strategies
+
+### 12.1 Comprehensive Testing Framework
 
 ```python
 # ai/langchain/examples/11_testing.py
@@ -5003,7 +6850,7 @@ if __name__ == "__main__":
     main()
 ```
 
-## Chapter 12: Production Deployment
+## Chapter 13: Production Deployment
 
 ### 12.1 Deployment Best Practices
 
@@ -5099,7 +6946,7 @@ if __name__ == "__main__":
     main()
 ```
 
-## Chapter 13: Debugging and Troubleshooting
+## Chapter 14: Debugging and Troubleshooting
 
 ### 13.1 Common Issues and Solutions
 
@@ -5206,7 +7053,7 @@ if __name__ == "__main__":
 
 This guide provides a complete learning path from beginner to advanced LangChain development with practical examples, real-world patterns, and production-ready code.
 
-## Chapter 14: LangSmith - Observability and Debugging
+## Chapter 15: LangSmith - Observability and Debugging
 
 LangSmith is a powerful platform for debugging, testing, evaluating, and monitoring LangChain applications in production.
 
