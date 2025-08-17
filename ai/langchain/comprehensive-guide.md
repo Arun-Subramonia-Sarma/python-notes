@@ -5205,3 +5205,896 @@ if __name__ == "__main__":
 - ✅ Debugging and Troubleshooting
 
 This guide provides a complete learning path from beginner to advanced LangChain development with practical examples, real-world patterns, and production-ready code.
+
+## Chapter 14: LangSmith - Observability and Debugging
+
+LangSmith is a powerful platform for debugging, testing, evaluating, and monitoring LangChain applications in production.
+
+### 14.1 LangSmith Setup and Configuration
+
+```python
+# ai/langchain/examples/14_langsmith.py
+
+import os
+from langchain import LangSmith
+from langchain.chat_models import ChatOpenAI
+from langchain.chains import LLMChain
+from langchain.prompts import PromptTemplate
+from langchain.callbacks import LangSmithCallbackHandler
+from langchain.schema import LLMResult
+from typing import Dict, Any, List
+import json
+from datetime import datetime
+
+class LangSmithIntegration:
+    """Comprehensive LangSmith integration for LangChain applications"""
+    
+    def __init__(self):
+        self.setup_langsmith()
+        self.setup_langchain_components()
+    
+    def setup_langsmith(self):
+        """Configure LangSmith environment"""
+        # Set up LangSmith environment variables
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
+        
+        # API key should be set in environment
+        if not os.getenv("LANGCHAIN_API_KEY"):
+            print("⚠️ LANGCHAIN_API_KEY not found. Set it to enable LangSmith tracing.")
+            print("Get your API key from: https://smith.langchain.com/")
+        
+        # Optional: Set project name
+        os.environ["LANGCHAIN_PROJECT"] = "comprehensive-langchain-demo"
+        
+        print("✅ LangSmith configuration completed")
+    
+    def setup_langchain_components(self):
+        """Initialize LangChain components with LangSmith integration"""
+        # Initialize LLM with LangSmith tracing
+        self.llm = ChatOpenAI(
+            temperature=0.1,
+            model="gpt-3.5-turbo",
+            callbacks=[LangSmithCallbackHandler()]
+        )
+        
+        # Create a prompt template
+        self.prompt_template = PromptTemplate(
+            template="""You are a helpful AI assistant. 
+            
+Context: {context}
+User Question: {question}
+
+Please provide a clear and helpful answer:""",
+            input_variables=["context", "question"]
+        )
+        
+        # Create chain with LangSmith tracing
+        self.chain = LLMChain(
+            llm=self.llm,
+            prompt=self.prompt_template,
+            callbacks=[LangSmithCallbackHandler()],
+            verbose=True
+        )
+        
+        print("✅ LangChain components initialized with LangSmith tracing")
+
+### 14.2 Advanced Tracing and Monitoring
+
+```python
+class LangSmithTracer:
+    """Advanced tracing capabilities with LangSmith"""
+    
+    def __init__(self, project_name: str = "langchain-advanced-tracing"):
+        self.project_name = project_name
+        self.setup_tracing()
+    
+    def setup_tracing(self):
+        """Configure advanced tracing"""
+        os.environ["LANGCHAIN_PROJECT"] = self.project_name
+        
+        # Enable detailed tracing
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        os.environ["LANGCHAIN_ENDPOINT"] = "https://api.smith.langchain.com"
+        
+        print(f"📊 Advanced tracing enabled for project: {self.project_name}")
+    
+    def trace_chain_execution(self, chain, inputs: Dict[str, Any], 
+                            metadata: Dict[str, Any] = None):
+        """Execute chain with detailed tracing"""
+        
+        # Add execution metadata
+        execution_metadata = {
+            "timestamp": datetime.now().isoformat(),
+            "execution_id": f"exec_{int(datetime.now().timestamp())}",
+            "input_tokens": len(str(inputs).split()),
+            **(metadata or {})
+        }
+        
+        print(f"🔍 Starting traced execution: {execution_metadata['execution_id']}")
+        
+        # Execute with tracing
+        try:
+            # Create callback with metadata
+            callback = LangSmithCallbackHandler(
+                project_name=self.project_name
+            )
+            
+            # Run chain with callback
+            result = chain.run(
+                callbacks=[callback],
+                **inputs
+            )
+            
+            print(f"✅ Traced execution completed successfully")
+            print(f"📊 Check LangSmith dashboard: https://smith.langchain.com/")
+            
+            return {
+                "result": result,
+                "metadata": execution_metadata,
+                "success": True
+            }
+            
+        except Exception as e:
+            print(f"❌ Traced execution failed: {e}")
+            return {
+                "error": str(e),
+                "metadata": execution_metadata,
+                "success": False
+            }
+    
+    def batch_trace_execution(self, chain, batch_inputs: List[Dict[str, Any]]):
+        """Execute multiple inputs with batch tracing"""
+        
+        print(f"📦 Starting batch execution of {len(batch_inputs)} inputs")
+        
+        batch_results = []
+        
+        for i, inputs in enumerate(batch_inputs):
+            print(f"\n--- Batch Item {i+1}/{len(batch_inputs)} ---")
+            
+            result = self.trace_chain_execution(
+                chain=chain,
+                inputs=inputs,
+                metadata={
+                    "batch_index": i,
+                    "batch_size": len(batch_inputs)
+                }
+            )
+            
+            batch_results.append(result)
+        
+        # Summary
+        successful = sum(1 for r in batch_results if r["success"])
+        print(f"\n📊 Batch Summary:")
+        print(f"   Total: {len(batch_results)}")
+        print(f"   Successful: {successful}")
+        print(f"   Failed: {len(batch_results) - successful}")
+        
+        return batch_results
+
+### 14.3 Custom Evaluations and Metrics
+
+```python
+from langchain.evaluation import load_evaluator
+from langchain.schema import Document
+
+class LangSmithEvaluator:
+    """Custom evaluation metrics for LangSmith"""
+    
+    def __init__(self):
+        self.setup_evaluators()
+    
+    def setup_evaluators(self):
+        """Initialize various evaluators"""
+        self.evaluators = {
+            "qa": load_evaluator("qa"),
+            "criteria": load_evaluator("criteria", criteria="helpfulness"),
+            "string_distance": load_evaluator("string_distance")
+        }
+        
+        print("🎯 Evaluators initialized")
+    
+    def evaluate_qa_chain(self, chain, test_cases: List[Dict[str, str]]):
+        """Evaluate Q&A chain performance"""
+        
+        print("📊 Evaluating Q&A Chain Performance")
+        print("=" * 40)
+        
+        evaluation_results = []
+        
+        for i, test_case in enumerate(test_cases):
+            question = test_case["question"]
+            expected_answer = test_case.get("expected_answer", "")
+            context = test_case.get("context", "")
+            
+            print(f"\nTest Case {i+1}: {question[:50]}...")
+            
+            # Get chain response
+            try:
+                actual_answer = chain.run(
+                    question=question,
+                    context=context
+                )
+                
+                # Evaluate response
+                if expected_answer:
+                    # Compare with expected answer
+                    string_eval = self.evaluators["string_distance"].evaluate_strings(
+                        prediction=actual_answer,
+                        reference=expected_answer
+                    )
+                    
+                    # Criteria evaluation
+                    criteria_eval = self.evaluators["criteria"].evaluate_strings(
+                        prediction=actual_answer,
+                        input=question
+                    )
+                    
+                    result = {
+                        "question": question,
+                        "actual_answer": actual_answer,
+                        "expected_answer": expected_answer,
+                        "string_distance": string_eval["score"],
+                        "helpfulness_score": criteria_eval["score"],
+                        "success": True
+                    }
+                else:
+                    # Just criteria evaluation
+                    criteria_eval = self.evaluators["criteria"].evaluate_strings(
+                        prediction=actual_answer,
+                        input=question
+                    )
+                    
+                    result = {
+                        "question": question,
+                        "actual_answer": actual_answer,
+                        "helpfulness_score": criteria_eval["score"],
+                        "success": True
+                    }
+                
+                evaluation_results.append(result)
+                
+                print(f"✅ Helpfulness Score: {result['helpfulness_score']:.2f}")
+                if 'string_distance' in result:
+                    print(f"📏 String Distance: {result['string_distance']:.2f}")
+                
+            except Exception as e:
+                print(f"❌ Evaluation failed: {e}")
+                evaluation_results.append({
+                    "question": question,
+                    "error": str(e),
+                    "success": False
+                })
+        
+        # Summary statistics
+        successful_evals = [r for r in evaluation_results if r["success"]]
+        
+        if successful_evals:
+            avg_helpfulness = sum(r["helpfulness_score"] for r in successful_evals) / len(successful_evals)
+            
+            print(f"\n📈 Evaluation Summary:")
+            print(f"   Total Test Cases: {len(test_cases)}")
+            print(f"   Successful: {len(successful_evals)}")
+            print(f"   Average Helpfulness: {avg_helpfulness:.2f}")
+            
+            if any('string_distance' in r for r in successful_evals):
+                distances = [r["string_distance"] for r in successful_evals if "string_distance" in r]
+                avg_distance = sum(distances) / len(distances)
+                print(f"   Average String Distance: {avg_distance:.2f}")
+        
+        return evaluation_results
+
+### 14.4 Dataset Management and Testing
+
+```python
+class LangSmithDatasetManager:
+    """Manage datasets and testing with LangSmith"""
+    
+    def __init__(self, project_name: str = "langchain-datasets"):
+        self.project_name = project_name
+        self.test_datasets = {}
+    
+    def create_test_dataset(self, name: str, test_cases: List[Dict[str, Any]]):
+        """Create a test dataset for evaluation"""
+        
+        dataset = {
+            "name": name,
+            "created_at": datetime.now().isoformat(),
+            "test_cases": test_cases,
+            "metadata": {
+                "size": len(test_cases),
+                "project": self.project_name
+            }
+        }
+        
+        self.test_datasets[name] = dataset
+        
+        print(f"📁 Created dataset '{name}' with {len(test_cases)} test cases")
+        return dataset
+    
+    def run_dataset_evaluation(self, dataset_name: str, chain):
+        """Run evaluation on a specific dataset"""
+        
+        if dataset_name not in self.test_datasets:
+            print(f"❌ Dataset '{dataset_name}' not found")
+            return None
+        
+        dataset = self.test_datasets[dataset_name]
+        test_cases = dataset["test_cases"]
+        
+        print(f"🧪 Running evaluation on dataset: {dataset_name}")
+        print(f"📊 Test cases: {len(test_cases)}")
+        
+        # Initialize evaluator
+        evaluator = LangSmithEvaluator()
+        
+        # Run evaluation
+        results = evaluator.evaluate_qa_chain(chain, test_cases)
+        
+        # Store results in dataset
+        dataset["last_evaluation"] = {
+            "timestamp": datetime.now().isoformat(),
+            "results": results
+        }
+        
+        return results
+    
+    def create_sample_datasets(self):
+        """Create sample datasets for demonstration"""
+        
+        # Customer service dataset
+        customer_service_cases = [
+            {
+                "question": "How do I reset my password?",
+                "context": "User account management system",
+                "expected_answer": "Go to login page, click 'Forgot Password', enter your email"
+            },
+            {
+                "question": "What are your business hours?",
+                "context": "Customer service information",
+                "expected_answer": "Monday-Friday 9AM-6PM EST"
+            },
+            {
+                "question": "How do I cancel my subscription?",
+                "context": "Subscription management",
+                "expected_answer": "Go to Account Settings, click Subscription, then Cancel"
+            }
+        ]
+        
+        # Technical support dataset
+        tech_support_cases = [
+            {
+                "question": "My API calls are failing with 401 error",
+                "context": "API authentication troubleshooting",
+                "expected_answer": "Check your API key validity and authentication headers"
+            },
+            {
+                "question": "How do I increase my rate limits?",
+                "context": "API rate limiting",
+                "expected_answer": "Contact support or upgrade your plan for higher limits"
+            }
+        ]
+        
+        # Create datasets
+        self.create_test_dataset("customer_service", customer_service_cases)
+        self.create_test_dataset("tech_support", tech_support_cases)
+        
+        print("✅ Sample datasets created")
+
+def main():
+    """Run comprehensive LangSmith demonstration"""
+    print("LangSmith Integration Comprehensive Demo")
+    print("=" * 45)
+    
+    # Check required environment variables
+    required_vars = ["OPENAI_API_KEY"]
+    optional_vars = ["LANGCHAIN_API_KEY"]
+    
+    for var in required_vars:
+        if not os.getenv(var):
+            print(f"❌ {var} is required but not found")
+            return
+    
+    for var in optional_vars:
+        if not os.getenv(var):
+            print(f"⚠️ {var} not found - some features may be limited")
+    
+    try:
+        # 1. Basic LangSmith integration
+        print("\n🔧 Setting up LangSmith integration...")
+        langsmith_integration = LangSmithIntegration()
+        
+        # 2. Test basic chain execution with tracing
+        print("\n📊 Testing traced chain execution...")
+        tracer = LangSmithTracer("demo-tracing")
+        
+        test_inputs = {
+            "context": "LangChain is a framework for building LLM applications",
+            "question": "What is LangChain used for?"
+        }
+        
+        result = tracer.trace_chain_execution(
+            chain=langsmith_integration.chain,
+            inputs=test_inputs,
+            metadata={"demo": "basic_tracing"}
+        )
+        
+        if result["success"]:
+            print(f"Response: {result['result'][:200]}...")
+        
+        # 3. Batch execution demo
+        print("\n📦 Testing batch execution...")
+        batch_inputs = [
+            {
+                "context": "Python programming language",
+                "question": "What are Python's main advantages?"
+            },
+            {
+                "context": "Machine learning with Python", 
+                "question": "Which Python libraries are used for ML?"
+            },
+            {
+                "context": "Web development with Python",
+                "question": "What frameworks are popular for Python web development?"
+            }
+        ]
+        
+        batch_results = tracer.batch_trace_execution(
+            chain=langsmith_integration.chain,
+            inputs=batch_inputs
+        )
+        
+        # 4. Dataset evaluation demo
+        print("\n🧪 Testing dataset evaluation...")
+        dataset_manager = LangSmithDatasetManager()
+        dataset_manager.create_sample_datasets()
+        
+        # Run evaluation on customer service dataset
+        evaluation_results = dataset_manager.run_dataset_evaluation(
+            "customer_service",
+            langsmith_integration.chain
+        )
+        
+        print("\n✅ LangSmith integration demonstration completed!")
+        print("🔗 Check your LangSmith dashboard at: https://smith.langchain.com/")
+        
+    except Exception as e:
+        print(f"❌ Demo failed: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    main()
+```
+
+### 14.5 Production Monitoring with LangSmith
+
+```python
+# ai/langchain/examples/14_langsmith_production.py
+
+import os
+import time
+import asyncio
+from datetime import datetime, timedelta
+from typing import Dict, Any, List, Optional
+from langchain.chat_models import ChatOpenAI
+from langchain.chains import LLMChain
+from langchain.prompts import PromptTemplate
+from langchain.callbacks import LangSmithCallbackHandler
+from langchain.schema import BaseMessage
+import json
+
+class ProductionLangSmithMonitor:
+    """Production monitoring and alerting with LangSmith"""
+    
+    def __init__(self, project_name: str = "production-monitoring"):
+        self.project_name = project_name
+        self.setup_monitoring()
+        self.metrics = {
+            "total_requests": 0,
+            "successful_requests": 0,
+            "failed_requests": 0,
+            "average_latency": 0.0,
+            "error_rate": 0.0
+        }
+    
+    def setup_monitoring(self):
+        """Configure production monitoring"""
+        os.environ["LANGCHAIN_PROJECT"] = self.project_name
+        os.environ["LANGCHAIN_TRACING_V2"] = "true"
+        
+        # Setup monitoring-specific configurations
+        os.environ["LANGCHAIN_TAGS"] = "production,monitoring"
+        
+        print(f"🔍 Production monitoring enabled for: {self.project_name}")
+    
+    def monitor_chain_execution(self, chain, inputs: Dict[str, Any], 
+                              user_id: Optional[str] = None,
+                              session_id: Optional[str] = None) -> Dict[str, Any]:
+        """Monitor single chain execution with detailed metrics"""
+        
+        start_time = time.time()
+        execution_id = f"exec_{int(start_time * 1000)}"
+        
+        # Prepare metadata
+        metadata = {
+            "execution_id": execution_id,
+            "user_id": user_id,
+            "session_id": session_id,
+            "timestamp": datetime.now().isoformat(),
+            "environment": "production"
+        }
+        
+        self.metrics["total_requests"] += 1
+        
+        try:
+            # Create callback with production metadata
+            callback = LangSmithCallbackHandler(
+                project_name=self.project_name,
+                tags=["production", "monitored"]
+            )
+            
+            # Execute chain
+            result = chain.run(
+                callbacks=[callback],
+                **inputs
+            )
+            
+            # Calculate metrics
+            end_time = time.time()
+            latency = end_time - start_time
+            
+            # Update success metrics
+            self.metrics["successful_requests"] += 1
+            self._update_latency_metric(latency)
+            
+            execution_result = {
+                "result": result,
+                "metadata": metadata,
+                "performance": {
+                    "latency_seconds": latency,
+                    "success": True
+                },
+                "success": True
+            }
+            
+            # Log for monitoring
+            self._log_execution(execution_result)
+            
+            return execution_result
+            
+        except Exception as e:
+            # Handle errors
+            end_time = time.time()
+            latency = end_time - start_time
+            
+            self.metrics["failed_requests"] += 1
+            self._update_error_rate()
+            
+            error_result = {
+                "error": str(e),
+                "error_type": type(e).__name__,
+                "metadata": metadata,
+                "performance": {
+                    "latency_seconds": latency,
+                    "success": False
+                },
+                "success": False
+            }
+            
+            # Log error for monitoring
+            self._log_execution(error_result)
+            
+            return error_result
+    
+    def _update_latency_metric(self, new_latency: float):
+        """Update average latency metric"""
+        successful_requests = self.metrics["successful_requests"]
+        current_avg = self.metrics["average_latency"]
+        
+        # Calculate new average
+        self.metrics["average_latency"] = (
+            (current_avg * (successful_requests - 1) + new_latency) / successful_requests
+        )
+    
+    def _update_error_rate(self):
+        """Update error rate metric"""
+        total = self.metrics["total_requests"]
+        failed = self.metrics["failed_requests"]
+        self.metrics["error_rate"] = (failed / total) * 100 if total > 0 else 0
+    
+    def _log_execution(self, execution_result: Dict[str, Any]):
+        """Log execution for monitoring (in production, send to logging system)"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        if execution_result["success"]:
+            print(f"[{timestamp}] ✅ SUCCESS - Latency: {execution_result['performance']['latency_seconds']:.3f}s")
+        else:
+            print(f"[{timestamp}] ❌ ERROR - {execution_result['error_type']}: {execution_result['error']}")
+    
+    def get_metrics_summary(self) -> Dict[str, Any]:
+        """Get current metrics summary"""
+        return {
+            **self.metrics,
+            "last_updated": datetime.now().isoformat(),
+            "uptime_minutes": time.time() / 60  # Simplified uptime
+        }
+    
+    def health_check(self) -> Dict[str, Any]:
+        """Perform health check"""
+        metrics = self.get_metrics_summary()
+        
+        # Define health thresholds
+        error_rate_threshold = 10.0  # 10% error rate
+        latency_threshold = 5.0      # 5 seconds average latency
+        
+        health_status = {
+            "healthy": True,
+            "issues": [],
+            "metrics": metrics
+        }
+        
+        # Check error rate
+        if metrics["error_rate"] > error_rate_threshold:
+            health_status["healthy"] = False
+            health_status["issues"].append(f"High error rate: {metrics['error_rate']:.1f}%")
+        
+        # Check latency
+        if metrics["average_latency"] > latency_threshold:
+            health_status["healthy"] = False
+            health_status["issues"].append(f"High latency: {metrics['average_latency']:.2f}s")
+        
+        return health_status
+
+class LangSmithAlertManager:
+    """Alert management for production monitoring"""
+    
+    def __init__(self, monitor: ProductionLangSmithMonitor):
+        self.monitor = monitor
+        self.alert_thresholds = {
+            "error_rate": 15.0,    # 15% error rate
+            "latency": 10.0,       # 10 seconds
+            "failed_requests": 50   # 50 failed requests
+        }
+        self.last_alert_times = {}
+        self.alert_cooldown = 300  # 5 minutes between same alert types
+    
+    def check_and_send_alerts(self):
+        """Check metrics and send alerts if needed"""
+        metrics = self.monitor.get_metrics_summary()
+        current_time = time.time()
+        
+        alerts_sent = []
+        
+        # Check error rate
+        if metrics["error_rate"] > self.alert_thresholds["error_rate"]:
+            if self._should_send_alert("error_rate", current_time):
+                alert = self._send_error_rate_alert(metrics["error_rate"])
+                alerts_sent.append(alert)
+        
+        # Check latency
+        if metrics["average_latency"] > self.alert_thresholds["latency"]:
+            if self._should_send_alert("latency", current_time):
+                alert = self._send_latency_alert(metrics["average_latency"])
+                alerts_sent.append(alert)
+        
+        # Check failed requests
+        if metrics["failed_requests"] > self.alert_thresholds["failed_requests"]:
+            if self._should_send_alert("failed_requests", current_time):
+                alert = self._send_failed_requests_alert(metrics["failed_requests"])
+                alerts_sent.append(alert)
+        
+        return alerts_sent
+    
+    def _should_send_alert(self, alert_type: str, current_time: float) -> bool:
+        """Check if enough time has passed to send alert again"""
+        last_time = self.last_alert_times.get(alert_type, 0)
+        return (current_time - last_time) > self.alert_cooldown
+    
+    def _send_error_rate_alert(self, error_rate: float) -> Dict[str, Any]:
+        """Send error rate alert"""
+        alert = {
+            "type": "error_rate",
+            "severity": "high" if error_rate > 25 else "medium",
+            "message": f"High error rate detected: {error_rate:.1f}%",
+            "timestamp": datetime.now().isoformat(),
+            "action_required": "Check LangSmith logs for error patterns"
+        }
+        
+        # In production, send to alerting system (PagerDuty, Slack, etc.)
+        print(f"🚨 ALERT: {alert['message']}")
+        
+        self.last_alert_times["error_rate"] = time.time()
+        return alert
+    
+    def _send_latency_alert(self, latency: float) -> Dict[str, Any]:
+        """Send latency alert"""
+        alert = {
+            "type": "latency",
+            "severity": "medium",
+            "message": f"High average latency: {latency:.2f}s",
+            "timestamp": datetime.now().isoformat(),
+            "action_required": "Check system performance and LLM response times"
+        }
+        
+        print(f"⚠️ ALERT: {alert['message']}")
+        
+        self.last_alert_times["latency"] = time.time()
+        return alert
+    
+    def _send_failed_requests_alert(self, failed_count: int) -> Dict[str, Any]:
+        """Send failed requests alert"""
+        alert = {
+            "type": "failed_requests",
+            "severity": "high",
+            "message": f"High number of failed requests: {failed_count}",
+            "timestamp": datetime.now().isoformat(),
+            "action_required": "Investigate request failures in LangSmith traces"
+        }
+        
+        print(f"🚨 ALERT: {alert['message']}")
+        
+        self.last_alert_times["failed_requests"] = time.time()
+        return alert
+
+def simulate_production_traffic(monitor: ProductionLangSmithMonitor, 
+                              chain, num_requests: int = 50):
+    """Simulate production traffic for demonstration"""
+    
+    print(f"🚦 Simulating {num_requests} production requests...")
+    
+    # Sample requests that might come in production
+    sample_requests = [
+        {
+            "context": "Customer support for e-commerce platform",
+            "question": "How do I track my order?"
+        },
+        {
+            "context": "Technical documentation",
+            "question": "What are the API rate limits?"
+        },
+        {
+            "context": "User account management",
+            "question": "How do I update my billing information?"
+        },
+        {
+            "context": "Product information",
+            "question": "What are the system requirements?"
+        },
+        {
+            "context": "Troubleshooting guide",
+            "question": "Why is my login not working?"
+        }
+    ]
+    
+    results = []
+    
+    for i in range(num_requests):
+        # Pick random request
+        import random
+        request_data = random.choice(sample_requests)
+        
+        # Add some variability
+        user_id = f"user_{random.randint(1000, 9999)}"
+        session_id = f"session_{random.randint(100000, 999999)}"
+        
+        # Sometimes simulate errors by using invalid input
+        if random.random() < 0.1:  # 10% error rate
+            request_data = {"invalid": "input"}  # This will cause an error
+        
+        # Monitor execution
+        result = monitor.monitor_chain_execution(
+            chain=chain,
+            inputs=request_data,
+            user_id=user_id,
+            session_id=session_id
+        )
+        
+        results.append(result)
+        
+        # Small delay to simulate real traffic
+        time.sleep(0.1)
+        
+        # Print progress
+        if (i + 1) % 10 == 0:
+            print(f"   Processed {i + 1}/{num_requests} requests...")
+    
+    return results
+
+def main():
+    """Run production monitoring demonstration"""
+    print("LangSmith Production Monitoring Demo")
+    print("=" * 40)
+    
+    # Check environment
+    if not os.getenv("OPENAI_API_KEY"):
+        print("❌ OPENAI_API_KEY required")
+        return
+    
+    try:
+        # Setup production monitoring
+        monitor = ProductionLangSmithMonitor("production-demo")
+        alert_manager = LangSmithAlertManager(monitor)
+        
+        # Create a simple chain for testing
+        llm = ChatOpenAI(temperature=0.1)
+        prompt = PromptTemplate(
+            template="Context: {context}\nQuestion: {question}\nAnswer:",
+            input_variables=["context", "question"]
+        )
+        chain = LLMChain(llm=llm, prompt=prompt)
+        
+        # Simulate production traffic
+        print("\n📊 Starting production traffic simulation...")
+        traffic_results = simulate_production_traffic(monitor, chain, 30)
+        
+        # Check metrics
+        print("\n📈 Current Metrics:")
+        metrics = monitor.get_metrics_summary()
+        for key, value in metrics.items():
+            if key == "last_updated":
+                continue
+            print(f"   {key}: {value}")
+        
+        # Health check
+        print("\n🏥 Health Check:")
+        health = monitor.health_check()
+        if health["healthy"]:
+            print("   ✅ System is healthy")
+        else:
+            print("   ⚠️ Issues detected:")
+            for issue in health["issues"]:
+                print(f"      - {issue}")
+        
+        # Check for alerts
+        print("\n🚨 Checking for alerts...")
+        alerts = alert_manager.check_and_send_alerts()
+        if alerts:
+            print(f"   Sent {len(alerts)} alerts")
+        else:
+            print("   No alerts triggered")
+        
+        print("\n✅ Production monitoring demonstration completed!")
+        print("🔗 View detailed traces at: https://smith.langchain.com/")
+        
+    except Exception as e:
+        print(f"❌ Production monitoring demo failed: {e}")
+        import traceback
+        traceback.print_exc()
+
+if __name__ == "__main__":
+    main()
+```
+
+---
+
+**🎯 LangSmith Chapter Summary:**
+
+This comprehensive LangSmith integration covers:
+
+✅ **Setup & Configuration**
+- Environment setup and API key management
+- Project configuration and tracing enablement
+
+✅ **Advanced Tracing**
+- Detailed execution tracing with metadata
+- Batch execution monitoring
+- Custom trace annotations
+
+✅ **Evaluation & Testing**
+- Custom evaluator implementations
+- Dataset management and testing
+- Performance metrics and scoring
+
+✅ **Production Monitoring**
+- Real-time monitoring and alerting
+- Health checks and performance tracking
+- Error rate and latency monitoring
+
+✅ **Alert Management**
+- Configurable alert thresholds
+- Cooldown mechanisms
+- Multi-channel alerting support
+
+This addition makes the guide even more comprehensive by covering observability and production monitoring - essential aspects of deploying LangChain applications at scale.
