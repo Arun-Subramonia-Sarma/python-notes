@@ -3139,3 +3139,2221 @@ def demonstrate_transaction_patterns():
     success = tx_manager.compensation_transaction_pattern()
     logger.info(f"Compensation pattern result: {success}")
 ```
+
+---
+
+## Chapter 11: Advanced Query Techniques
+
+### 11.1 Complex Joins and Subqueries
+
+```python
+from sqlalchemy import func, exists, case, literal_column, text
+from sqlalchemy.orm import aliased, contains_eager, selectinload, subqueryload
+
+# Complex join scenarios
+def advanced_joins_example(session):
+    """Advanced join patterns and techniques"""
+    
+    # Self-join with aliases
+    parent_user = aliased(User)
+    child_user = aliased(User)
+    
+    # Find users and their managers
+    query = session.query(child_user, parent_user).join(
+        parent_user, child_user.manager_id == parent_user.id
+    )
+    
+    for employee, manager in query.all():
+        print(f"{employee.username} reports to {manager.username}")
+    
+    # Multiple table joins with conditions
+    complex_query = (
+        session.query(User.username, func.count(Order.id).label('order_count'))
+        .join(Order, User.id == Order.user_id)
+        .join(Product, Order.product_id == Product.id)
+        .filter(Product.price > 100)
+        .group_by(User.id)
+        .having(func.count(Order.id) > 2)
+        .order_by(func.count(Order.id).desc())
+    )
+    
+    # Correlated subqueries
+    subq = (
+        session.query(func.avg(Order.total_amount))
+        .filter(Order.user_id == User.id)
+        .correlate(User)
+        .scalar_subquery()
+    )
+    
+    high_value_customers = (
+        session.query(User)
+        .filter(subq > 1000)
+    )
+    
+    return high_value_customers.all()
+
+# Window functions
+def window_functions_example(session):
+    """Using window functions for analytics"""
+    
+    from sqlalchemy import func
+    
+    # Rank users by order total within each month
+    query = (
+        session.query(
+            User.username,
+            func.extract('month', Order.created_at).label('month'),
+            func.sum(Order.total_amount).label('total'),
+            func.rank().over(
+                partition_by=func.extract('month', Order.created_at),
+                order_by=func.sum(Order.total_amount).desc()
+            ).label('rank')
+        )
+        .join(Order)
+        .group_by(User.id, func.extract('month', Order.created_at))
+        .order_by('month', 'rank')
+    )
+    
+    return query.all()
+
+# Common Table Expressions (CTEs)
+def cte_example(session):
+    """Using Common Table Expressions"""
+    
+    # Recursive CTE for hierarchical data
+    if session.bind.dialect.name == 'postgresql':
+        cte_query = text("""
+            WITH RECURSIVE employee_hierarchy AS (
+                -- Base case: top-level employees
+                SELECT id, username, manager_id, 0 as level
+                FROM users 
+                WHERE manager_id IS NULL
+                
+                UNION ALL
+                
+                -- Recursive case
+                SELECT u.id, u.username, u.manager_id, eh.level + 1
+                FROM users u
+                JOIN employee_hierarchy eh ON u.manager_id = eh.id
+            )
+            SELECT * FROM employee_hierarchy ORDER BY level, username
+        """)
+        
+        result = session.execute(cte_query)
+        return result.fetchall()
+    
+    return []
+
+# Advanced filtering with EXISTS
+def exists_subquery_example(session):
+    """Using EXISTS for advanced filtering"""
+    
+    # Users who have placed orders
+    has_orders = session.query(User).filter(
+        exists().where(Order.user_id == User.id)
+    )
+    
+    # Users who haven't placed any orders
+    no_orders = session.query(User).filter(
+        ~exists().where(Order.user_id == User.id)
+    )
+    
+    # Users with high-value orders
+    high_value_orders = session.query(User).filter(
+        exists().where(
+            (Order.user_id == User.id) & 
+            (Order.total_amount > 1000)
+        )
+    )
+    
+    return {
+        'has_orders': has_orders.count(),
+        'no_orders': no_orders.count(),
+        'high_value': high_value_orders.count()
+    }
+```
+
+### 11.2 Query Optimization Techniques
+
+```python
+from sqlalchemy.orm import joinedload, selectinload, subqueryload
+from sqlalchemy import Index, inspect
+import time
+
+class QueryOptimizer:
+    """Advanced query optimization patterns"""
+    
+    def __init__(self, session):
+        self.session = session
+    
+    def eager_loading_strategies(self):
+        """Different eager loading strategies and their use cases"""
+        
+        # Joined load - single query with JOIN
+        print("1. Joined Load (single query):")
+        start = time.time()
+        users_joined = (
+            self.session.query(User)
+            .options(joinedload(User.orders))
+            .limit(10)
+            .all()
+        )
+        print(f"   Time: {time.time() - start:.3f}s")
+        print(f"   Users loaded: {len(users_joined)}")
+        
+        # Select in load - separate query for relationships
+        print("\n2. Select In Load (separate optimized query):")
+        start = time.time()
+        users_selectin = (
+            self.session.query(User)
+            .options(selectinload(User.orders))
+            .limit(10)
+            .all()
+        )
+        print(f"   Time: {time.time() - start:.3f}s")
+        print(f"   Users loaded: {len(users_selectin)}")
+        
+        # Subquery load - subquery for relationships
+        print("\n3. Subquery Load:")
+        start = time.time()
+        users_subquery = (
+            self.session.query(User)
+            .options(subqueryload(User.orders))
+            .limit(10)
+            .all()
+        )
+        print(f"   Time: {time.time() - start:.3f}s")
+        print(f"   Users loaded: {len(users_subquery)}")
+    
+    def query_execution_analysis(self):
+        """Analyze query execution plans"""
+        
+        # Enable query logging
+        import logging
+        logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
+        
+        # Complex query for analysis
+        query = (
+            self.session.query(User)
+            .join(Order)
+            .join(Product)
+            .filter(Product.price > 50)
+            .filter(User.created_at > '2023-01-01')
+            .options(joinedload(User.orders))
+        )
+        
+        # Get the compiled query
+        compiled = query.statement.compile(
+            dialect=self.session.bind.dialect,
+            compile_kwargs={"literal_binds": True}
+        )
+        
+        print("Compiled SQL:")
+        print(str(compiled))
+        
+        # Execute and measure
+        start = time.time()
+        results = query.all()
+        execution_time = time.time() - start
+        
+        print(f"\nExecution time: {execution_time:.3f}s")
+        print(f"Results count: {len(results)}")
+        
+        return results
+    
+    def batch_operations(self):
+        """Efficient batch insert/update operations"""
+        
+        # Bulk insert
+        print("1. Bulk Insert:")
+        start = time.time()
+        
+        users_data = [
+            {'username': f'user_{i}', 'email': f'user{i}@example.com'}
+            for i in range(1000, 2000)
+        ]
+        
+        self.session.bulk_insert_mappings(User, users_data)
+        self.session.commit()
+        
+        print(f"   Bulk insert time: {time.time() - start:.3f}s")
+        
+        # Bulk update
+        print("\n2. Bulk Update:")
+        start = time.time()
+        
+        self.session.bulk_update_mappings(
+            User, 
+            [
+                {'id': user.id, 'last_login': func.now()}
+                for user in self.session.query(User).filter(User.id.between(1000, 1100)).all()
+            ]
+        )
+        self.session.commit()
+        
+        print(f"   Bulk update time: {time.time() - start:.3f}s")
+    
+    def pagination_strategies(self):
+        """Efficient pagination techniques"""
+        
+        # Standard LIMIT/OFFSET pagination
+        def offset_pagination(page, per_page):
+            return (
+                self.session.query(User)
+                .order_by(User.id)
+                .offset(page * per_page)
+                .limit(per_page)
+                .all()
+            )
+        
+        # Cursor-based pagination (more efficient for large datasets)
+        def cursor_pagination(last_id=None, per_page=20):
+            query = self.session.query(User).order_by(User.id)
+            
+            if last_id:
+                query = query.filter(User.id > last_id)
+            
+            return query.limit(per_page).all()
+        
+        # Compare performance
+        print("Pagination Performance Comparison:")
+        
+        # Test offset pagination
+        start = time.time()
+        page_1000 = offset_pagination(1000, 20)  # Skip 20,000 records
+        offset_time = time.time() - start
+        print(f"Offset pagination (page 1000): {offset_time:.3f}s")
+        
+        # Test cursor pagination
+        start = time.time()
+        cursor_page = cursor_pagination(20000, 20)  # After ID 20,000
+        cursor_time = time.time() - start
+        print(f"Cursor pagination (after ID 20000): {cursor_time:.3f}s")
+        
+        return {
+            'offset_results': len(page_1000),
+            'cursor_results': len(cursor_page),
+            'performance_improvement': f"{(offset_time / cursor_time):.1f}x faster"
+        }
+
+# Query caching strategies
+class QueryCache:
+    """Implement query result caching"""
+    
+    def __init__(self):
+        self.cache = {}
+        self.cache_stats = {'hits': 0, 'misses': 0}
+    
+    def cached_query(self, session, cache_key, query_func, ttl=300):
+        """Cache query results with TTL"""
+        import time
+        import hashlib
+        import pickle
+        
+        # Generate cache key
+        if isinstance(cache_key, str):
+            key = cache_key
+        else:
+            key = hashlib.md5(str(cache_key).encode()).hexdigest()
+        
+        # Check cache
+        now = time.time()
+        if key in self.cache:
+            cached_data, timestamp = self.cache[key]
+            if now - timestamp < ttl:
+                self.cache_stats['hits'] += 1
+                return pickle.loads(cached_data)
+        
+        # Execute query and cache result
+        self.cache_stats['misses'] += 1
+        result = query_func(session)
+        self.cache[key] = (pickle.dumps(result), now)
+        
+        return result
+    
+    def get_cache_stats(self):
+        """Get cache hit/miss statistics"""
+        total = self.cache_stats['hits'] + self.cache_stats['misses']
+        if total == 0:
+            return {'hit_rate': 0, 'total_queries': 0}
+        
+        return {
+            'hit_rate': self.cache_stats['hits'] / total,
+            'total_queries': total,
+            'hits': self.cache_stats['hits'],
+            'misses': self.cache_stats['misses']
+        }
+```
+
+---
+
+## Chapter 12: Database Migrations with Alembic
+
+### 12.1 Alembic Setup and Configuration
+
+```python
+# alembic/env.py configuration
+from logging.config import fileConfig
+from sqlalchemy import engine_from_config, pool
+from alembic import context
+import os
+import sys
+
+# Add your model import path
+sys.path.insert(0, os.path.realpath(os.path.join(os.path.dirname(__file__), '..')))
+
+from models import Base  # Import your Base from models
+from config import DATABASE_URL
+
+# Alembic Config object
+config = context.config
+
+# Set database URL
+config.set_main_option('sqlalchemy.url', DATABASE_URL)
+
+# Interpret the config file for logging
+if config.config_file_name is not None:
+    fileConfig(config.config_file_name)
+
+# Set target metadata for autogenerate
+target_metadata = Base.metadata
+
+def run_migrations_offline() -> None:
+    """Run migrations in 'offline' mode"""
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+        compare_type=True,
+        compare_server_default=True,
+        include_schemas=True
+    )
+
+    with context.begin_transaction():
+        context.run_migrations()
+
+def run_migrations_online() -> None:
+    """Run migrations in 'online' mode"""
+    connectable = engine_from_config(
+        config.get_section(config.config_ini_section),
+        prefix="sqlalchemy.",
+        poolclass=pool.NullPool,
+    )
+
+    with connectable.connect() as connection:
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            compare_type=True,
+            compare_server_default=True,
+            include_schemas=True
+        )
+
+        with context.begin_transaction():
+            context.run_migrations()
+
+# Run migrations
+if context.is_offline_mode():
+    run_migrations_offline()
+else:
+    run_migrations_online()
+```
+
+### 12.2 Migration Management
+
+```python
+"""
+Migration management utilities and best practices
+"""
+import os
+import subprocess
+from pathlib import Path
+from typing import List, Optional
+from sqlalchemy import create_engine, text
+import logging
+
+class MigrationManager:
+    """Manage database migrations with Alembic"""
+    
+    def __init__(self, database_url: str, alembic_dir: str = "alembic"):
+        self.database_url = database_url
+        self.alembic_dir = Path(alembic_dir)
+        self.logger = logging.getLogger(__name__)
+    
+    def create_migration(self, message: str, auto: bool = True) -> str:
+        """Create a new migration"""
+        try:
+            if auto:
+                cmd = ["alembic", "revision", "--autogenerate", "-m", message]
+            else:
+                cmd = ["alembic", "revision", "-m", message]
+            
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            
+            # Extract revision ID from output
+            output_lines = result.stdout.strip().split('\n')
+            revision_line = [line for line in output_lines if 'Generating' in line]
+            
+            if revision_line:
+                revision_id = revision_line[0].split('/')[-1].split('_')[0]
+                self.logger.info(f"Created migration: {revision_id} - {message}")
+                return revision_id
+            
+            return "unknown"
+        
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Failed to create migration: {e.stderr}")
+            raise
+    
+    def apply_migrations(self, revision: str = "head") -> bool:
+        """Apply migrations to database"""
+        try:
+            cmd = ["alembic", "upgrade", revision]
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            
+            self.logger.info(f"Successfully applied migrations to {revision}")
+            return True
+        
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Migration failed: {e.stderr}")
+            return False
+    
+    def rollback_migration(self, revision: str) -> bool:
+        """Rollback to a specific migration"""
+        try:
+            cmd = ["alembic", "downgrade", revision]
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+            
+            self.logger.info(f"Successfully rolled back to {revision}")
+            return True
+        
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Rollback failed: {e.stderr}")
+            return False
+    
+    def get_migration_history(self) -> List[dict]:
+        """Get migration history"""
+        try:
+            cmd = ["alembic", "history", "--verbose"]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            
+            # Parse history output
+            history = []
+            current_migration = {}
+            
+            for line in result.stdout.split('\n'):
+                line = line.strip()
+                if line.startswith('Rev:'):
+                    if current_migration:
+                        history.append(current_migration)
+                    current_migration = {'revision': line.split(':')[1].strip()}
+                elif line.startswith('Parent:'):
+                    current_migration['parent'] = line.split(':')[1].strip()
+                elif line.startswith('Branch:'):
+                    current_migration['branch'] = line.split(':')[1].strip()
+                elif line.startswith('Description:'):
+                    current_migration['description'] = line.split(':', 1)[1].strip()
+            
+            if current_migration:
+                history.append(current_migration)
+            
+            return history
+        
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Failed to get history: {e.stderr}")
+            return []
+    
+    def get_current_revision(self) -> Optional[str]:
+        """Get current database revision"""
+        try:
+            cmd = ["alembic", "current"]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            
+            output = result.stdout.strip()
+            if output:
+                return output.split(' ')[0]
+            return None
+        
+        except subprocess.CalledProcessError:
+            return None
+    
+    def check_migration_status(self) -> dict:
+        """Check if database needs migrations"""
+        try:
+            # Get current revision
+            current = self.get_current_revision()
+            
+            # Get head revision
+            cmd = ["alembic", "heads"]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            head = result.stdout.strip().split(' ')[0]
+            
+            # Check for pending migrations
+            cmd = ["alembic", "show", "head"]
+            result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+            
+            return {
+                'current_revision': current,
+                'head_revision': head,
+                'up_to_date': current == head,
+                'needs_migration': current != head
+            }
+        
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Status check failed: {e.stderr}")
+            return {'error': str(e)}
+    
+    def create_backup_before_migration(self) -> str:
+        """Create database backup before applying migrations"""
+        import datetime
+        
+        timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+        backup_file = f"backup_before_migration_{timestamp}.sql"
+        
+        try:
+            # This is PostgreSQL-specific, adapt for other databases
+            if 'postgresql' in self.database_url:
+                import urllib.parse
+                parsed = urllib.parse.urlparse(self.database_url)
+                
+                cmd = [
+                    "pg_dump",
+                    "-h", parsed.hostname or "localhost",
+                    "-p", str(parsed.port or 5432),
+                    "-U", parsed.username,
+                    "-d", parsed.path[1:],  # Remove leading slash
+                    "-f", backup_file,
+                    "--verbose"
+                ]
+                
+                env = os.environ.copy()
+                env['PGPASSWORD'] = parsed.password
+                
+                subprocess.run(cmd, env=env, check=True)
+                self.logger.info(f"Database backup created: {backup_file}")
+                return backup_file
+            
+            else:
+                self.logger.warning("Backup only implemented for PostgreSQL")
+                return ""
+        
+        except subprocess.CalledProcessError as e:
+            self.logger.error(f"Backup failed: {e}")
+            return ""
+
+# Custom migration templates
+def create_custom_migration_template():
+    """Create custom migration template with best practices"""
+    
+    template = '''"""${message}
+
+Revision ID: ${up_revision}
+Revises: ${down_revision | comma,n}
+Create Date: ${create_date}
+
+"""
+from alembic import op
+import sqlalchemy as sa
+${imports if imports else ""}
+
+# Migration metadata
+MIGRATION_ID = "${up_revision}"
+MIGRATION_DESCRIPTION = "${message}"
+
+def upgrade() -> None:
+    """Apply migration changes"""
+    
+    # Add migration validation
+    _validate_migration_preconditions()
+    
+    try:
+        ${upgrades if upgrades else "pass"}
+        
+        # Log successful migration
+        _log_migration_success("upgrade")
+        
+    except Exception as e:
+        # Log migration failure
+        _log_migration_failure("upgrade", str(e))
+        raise
+
+def downgrade() -> None:
+    """Rollback migration changes"""
+    
+    try:
+        ${downgrades if downgrades else "pass"}
+        
+        # Log successful rollback
+        _log_migration_success("downgrade")
+        
+    except Exception as e:
+        # Log rollback failure
+        _log_migration_failure("downgrade", str(e))
+        raise
+
+def _validate_migration_preconditions():
+    """Validate conditions before applying migration"""
+    
+    # Check database connection
+    connection = op.get_bind()
+    if not connection:
+        raise RuntimeError("No database connection available")
+    
+    # Add custom validation logic here
+    pass
+
+def _log_migration_success(operation: str):
+    """Log successful migration operation"""
+    connection = op.get_bind()
+    connection.execute(sa.text(f"""
+        INSERT INTO migration_log (revision_id, description, operation, status, timestamp)
+        VALUES ('{MIGRATION_ID}', '{MIGRATION_DESCRIPTION}', '{operation}', 'success', NOW())
+    """))
+
+def _log_migration_failure(operation: str, error: str):
+    """Log failed migration operation"""
+    try:
+        connection = op.get_bind()
+        connection.execute(sa.text(f"""
+            INSERT INTO migration_log (revision_id, description, operation, status, error, timestamp)
+            VALUES ('{MIGRATION_ID}', '{MIGRATION_DESCRIPTION}', '{operation}', 'failed', '{error}', NOW())
+        """))
+    except:
+        # Ignore logging failures during migration failures
+        pass
+'''
+    
+    return template
+
+# Data migrations
+class DataMigration:
+    """Handle data migrations and transformations"""
+    
+    def __init__(self, connection):
+        self.connection = connection
+        self.logger = logging.getLogger(__name__)
+    
+    def migrate_user_data(self):
+        """Example data migration for user table changes"""
+        
+        # Step 1: Add new column
+        self.connection.execute(text("""
+            ALTER TABLE users 
+            ADD COLUMN full_name VARCHAR(200)
+        """))
+        
+        # Step 2: Populate new column from existing data
+        self.connection.execute(text("""
+            UPDATE users 
+            SET full_name = CONCAT(first_name, ' ', last_name)
+            WHERE first_name IS NOT NULL AND last_name IS NOT NULL
+        """))
+        
+        # Step 3: Handle edge cases
+        self.connection.execute(text("""
+            UPDATE users 
+            SET full_name = COALESCE(first_name, last_name, 'Unknown')
+            WHERE full_name IS NULL
+        """))
+        
+        self.logger.info("User data migration completed")
+    
+    def batch_data_transformation(self, table_name: str, batch_size: int = 1000):
+        """Perform batch data transformation to avoid locking large tables"""
+        
+        # Get total count
+        result = self.connection.execute(text(f"SELECT COUNT(*) FROM {table_name}"))
+        total_rows = result.scalar()
+        
+        processed = 0
+        while processed < total_rows:
+            # Process batch
+            self.connection.execute(text(f"""
+                UPDATE {table_name}
+                SET updated_at = NOW()
+                WHERE id IN (
+                    SELECT id FROM {table_name}
+                    ORDER BY id
+                    LIMIT {batch_size}
+                    OFFSET {processed}
+                )
+            """))
+            
+            processed += batch_size
+            self.logger.info(f"Processed {min(processed, total_rows)}/{total_rows} rows")
+            
+            # Commit batch to release locks
+            self.connection.commit()
+
+# Migration testing utilities
+def test_migration_integrity():
+    """Test migration integrity and rollback safety"""
+    
+    def test_forward_backward_migration(migration_manager: MigrationManager):
+        """Test that migration can be applied and rolled back safely"""
+        
+        # Get current state
+        initial_state = migration_manager.get_current_revision()
+        
+        # Apply migration
+        success = migration_manager.apply_migrations("head")
+        assert success, "Forward migration failed"
+        
+        # Verify migration applied
+        current_state = migration_manager.get_current_revision()
+        assert current_state != initial_state, "Migration didn't change database state"
+        
+        # Rollback migration
+        success = migration_manager.rollback_migration(initial_state)
+        assert success, "Rollback migration failed"
+        
+        # Verify rollback
+        final_state = migration_manager.get_current_revision()
+        assert final_state == initial_state, "Rollback didn't restore original state"
+        
+        print("✓ Migration forward/backward test passed")
+    
+    return test_forward_backward_migration
+```
+
+---
+
+## Chapter 13: Performance Optimization
+
+### 13.1 Database Performance Tuning
+
+```python
+from sqlalchemy import event, Index, text, func, inspect
+from sqlalchemy.pool import StaticPool, QueuePool
+from sqlalchemy.engine import Engine
+import time
+import logging
+
+class DatabasePerformanceMonitor:
+    """Monitor and optimize database performance"""
+    
+    def __init__(self, engine):
+        self.engine = engine
+        self.query_stats = {}
+        self.slow_query_threshold = 1.0  # seconds
+        self.logger = logging.getLogger(__name__)
+        self._setup_monitoring()
+    
+    def _setup_monitoring(self):
+        """Setup performance monitoring hooks"""
+        
+        @event.listens_for(self.engine, "before_cursor_execute")
+        def receive_before_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+            context._query_start_time = time.time()
+            context._query_statement = statement
+        
+        @event.listens_for(self.engine, "after_cursor_execute")
+        def receive_after_cursor_execute(conn, cursor, statement, parameters, context, executemany):
+            if hasattr(context, '_query_start_time'):
+                execution_time = time.time() - context._query_start_time
+                
+                # Log slow queries
+                if execution_time > self.slow_query_threshold:
+                    self.logger.warning(f"Slow query ({execution_time:.3f}s): {statement[:100]}...")
+                
+                # Collect statistics
+                self._collect_query_stats(statement, execution_time)
+    
+    def _collect_query_stats(self, statement: str, execution_time: float):
+        """Collect query execution statistics"""
+        # Normalize query for statistics
+        query_type = statement.strip().split()[0].upper()
+        
+        if query_type not in self.query_stats:
+            self.query_stats[query_type] = {
+                'count': 0,
+                'total_time': 0,
+                'avg_time': 0,
+                'max_time': 0,
+                'min_time': float('inf')
+            }
+        
+        stats = self.query_stats[query_type]
+        stats['count'] += 1
+        stats['total_time'] += execution_time
+        stats['avg_time'] = stats['total_time'] / stats['count']
+        stats['max_time'] = max(stats['max_time'], execution_time)
+        stats['min_time'] = min(stats['min_time'], execution_time)
+    
+    def get_performance_report(self) -> dict:
+        """Get comprehensive performance report"""
+        
+        # Connection pool stats
+        pool_stats = {}
+        if hasattr(self.engine.pool, 'size'):
+            pool_stats = {
+                'pool_size': self.engine.pool.size(),
+                'checked_in': self.engine.pool.checkedin(),
+                'checked_out': self.engine.pool.checkedout(),
+                'overflow': self.engine.pool.overflow(),
+                'invalid': self.engine.pool.invalid()
+            }
+        
+        return {
+            'query_statistics': self.query_stats,
+            'connection_pool': pool_stats,
+            'slow_query_threshold': self.slow_query_threshold
+        }
+    
+    def suggest_optimizations(self) -> List[str]:
+        """Suggest performance optimizations"""
+        suggestions = []
+        
+        # Analyze query patterns
+        for query_type, stats in self.query_stats.items():
+            if stats['avg_time'] > self.slow_query_threshold:
+                suggestions.append(
+                    f"Consider optimizing {query_type} queries (avg: {stats['avg_time']:.3f}s)"
+                )
+            
+            if query_type == 'SELECT' and stats['count'] > 1000:
+                suggestions.append(
+                    "High SELECT query volume - consider implementing query caching"
+                )
+        
+        # Check connection pool utilization
+        report = self.get_performance_report()
+        pool_stats = report['connection_pool']
+        
+        if pool_stats and pool_stats.get('checked_out', 0) > pool_stats.get('pool_size', 0) * 0.8:
+            suggestions.append("Connection pool utilization is high - consider increasing pool size")
+        
+        return suggestions
+
+class IndexOptimizer:
+    """Analyze and optimize database indexes"""
+    
+    def __init__(self, session):
+        self.session = session
+        self.logger = logging.getLogger(__name__)
+    
+    def analyze_missing_indexes(self, table_name: str) -> List[dict]:
+        """Analyze missing indexes based on query patterns"""
+        
+        # This is PostgreSQL-specific - adapt for other databases
+        if self.session.bind.dialect.name != 'postgresql':
+            return []
+        
+        missing_indexes_query = text("""
+            SELECT 
+                schemaname,
+                tablename,
+                attname,
+                n_distinct,
+                correlation
+            FROM pg_stats 
+            WHERE schemaname = 'public' 
+            AND tablename = :table_name
+            AND n_distinct > 100
+            ORDER BY n_distinct DESC
+        """)
+        
+        result = self.session.execute(missing_indexes_query, {'table_name': table_name})
+        
+        suggestions = []
+        for row in result:
+            suggestions.append({
+                'table': row.tablename,
+                'column': row.attname,
+                'distinct_values': row.n_distinct,
+                'correlation': row.correlation,
+                'suggestion': f"CREATE INDEX idx_{row.tablename}_{row.attname} ON {row.tablename}({row.attname})"
+            })
+        
+        return suggestions
+    
+    def analyze_unused_indexes(self) -> List[dict]:
+        """Find unused indexes that can be dropped"""
+        
+        if self.session.bind.dialect.name != 'postgresql':
+            return []
+        
+        unused_indexes_query = text("""
+            SELECT 
+                schemaname,
+                tablename,
+                indexname,
+                idx_tup_read,
+                idx_tup_fetch
+            FROM pg_stat_user_indexes 
+            WHERE idx_tup_read = 0 
+            AND idx_tup_fetch = 0
+            AND indexname NOT LIKE '%_pkey'
+        """)
+        
+        result = self.session.execute(unused_indexes_query)
+        
+        unused = []
+        for row in result:
+            unused.append({
+                'schema': row.schemaname,
+                'table': row.tablename,
+                'index': row.indexname,
+                'suggestion': f"Consider dropping unused index: DROP INDEX {row.indexname}"
+            })
+        
+        return unused
+    
+    def create_composite_index(self, table_name: str, columns: List[str], index_name: str = None):
+        """Create composite index for multiple columns"""
+        
+        if not index_name:
+            index_name = f"idx_{table_name}_{'_'.join(columns)}"
+        
+        # Create index
+        create_index_sql = text(f"""
+            CREATE INDEX CONCURRENTLY {index_name} 
+            ON {table_name} ({', '.join(columns)})
+        """)
+        
+        try:
+            self.session.execute(create_index_sql)
+            self.session.commit()
+            self.logger.info(f"Created composite index: {index_name}")
+        except Exception as e:
+            self.session.rollback()
+            self.logger.error(f"Failed to create index {index_name}: {e}")
+
+class QueryOptimizer:
+    """Optimize SQLAlchemy queries for better performance"""
+    
+    def __init__(self, session):
+        self.session = session
+    
+    def optimize_large_result_sets(self, query, batch_size: int = 1000):
+        """Process large result sets in batches to avoid memory issues"""
+        
+        # Get total count first
+        total = query.count()
+        processed = 0
+        
+        while processed < total:
+            batch = query.offset(processed).limit(batch_size).all()
+            yield batch
+            processed += len(batch)
+            
+            # Clear session periodically to prevent memory buildup
+            if processed % (batch_size * 10) == 0:
+                self.session.expunge_all()
+    
+    def optimize_n_plus_one(self, base_query, *relationships):
+        """Eliminate N+1 queries using eager loading"""
+        
+        from sqlalchemy.orm import joinedload, selectinload
+        
+        # Automatically choose loading strategy based on relationship cardinality
+        optimized_query = base_query
+        
+        for relationship in relationships:
+            # Use selectinload for one-to-many, joinedload for many-to-one
+            # This is a simplified heuristic
+            optimized_query = optimized_query.options(selectinload(relationship))
+        
+        return optimized_query
+    
+    def create_materialized_view(self, view_name: str, query):
+        """Create materialized view for expensive queries"""
+        
+        if self.session.bind.dialect.name == 'postgresql':
+            # Get the SQL from the query
+            compiled_query = str(query.statement.compile(
+                dialect=self.session.bind.dialect,
+                compile_kwargs={"literal_binds": True}
+            ))
+            
+            # Create materialized view
+            create_view_sql = text(f"""
+                CREATE MATERIALIZED VIEW IF NOT EXISTS {view_name} AS
+                {compiled_query}
+            """)
+            
+            try:
+                self.session.execute(create_view_sql)
+                self.session.commit()
+                
+                # Create refresh function
+                refresh_sql = text(f"REFRESH MATERIALIZED VIEW {view_name}")
+                
+                return {
+                    'view_name': view_name,
+                    'created': True,
+                    'refresh_command': str(refresh_sql)
+                }
+            
+            except Exception as e:
+                self.session.rollback()
+                return {'error': str(e)}
+        
+        return {'error': 'Materialized views only supported on PostgreSQL'}
+
+# Connection pooling optimization
+def configure_optimal_pool(database_url: str, **pool_kwargs):
+    """Configure optimal connection pool settings"""
+    
+    default_pool_config = {
+        'poolclass': QueuePool,
+        'pool_size': 20,           # Number of connections to maintain
+        'max_overflow': 30,        # Additional connections beyond pool_size
+        'pool_recycle': 3600,      # Recycle connections after 1 hour
+        'pool_pre_ping': True,     # Validate connections before use
+        'pool_timeout': 30,        # Timeout for getting connection from pool
+    }
+    
+    # Override with provided kwargs
+    pool_config = {**default_pool_config, **pool_kwargs}
+    
+    from sqlalchemy import create_engine
+    engine = create_engine(database_url, **pool_config)
+    
+    return engine
+
+# Memory optimization for large datasets
+class MemoryOptimizedQuery:
+    """Handle memory-efficient querying for large datasets"""
+    
+    def __init__(self, session):
+        self.session = session
+    
+    def stream_query_results(self, query, chunk_size: int = 1000):
+        """Stream query results to avoid loading all data into memory"""
+        
+        # Enable streaming
+        query = query.execution_options(stream_results=True)
+        result = self.session.execute(query.statement)
+        
+        while True:
+            chunk = result.fetchmany(chunk_size)
+            if not chunk:
+                break
+            yield chunk
+    
+    def process_large_table(self, model_class, process_func, batch_size: int = 1000):
+        """Process large tables in batches with memory management"""
+        
+        # Get primary key column
+        pk_column = inspect(model_class).primary_key[0]
+        
+        # Find min and max IDs
+        min_id = self.session.query(func.min(pk_column)).scalar()
+        max_id = self.session.query(func.max(pk_column)).scalar()
+        
+        if min_id is None:
+            return
+        
+        current_id = min_id
+        processed_count = 0
+        
+        while current_id <= max_id:
+            # Process batch
+            batch = (
+                self.session.query(model_class)
+                .filter(pk_column.between(current_id, current_id + batch_size - 1))
+                .all()
+            )
+            
+            if batch:
+                process_func(batch)
+                processed_count += len(batch)
+                
+                # Clear session to free memory
+                self.session.expunge_all()
+                
+                print(f"Processed {processed_count} records...")
+            
+            current_id += batch_size
+        
+        return processed_count
+
+def demonstrate_performance_optimization(session):
+    """Demonstrate performance optimization techniques"""
+    
+    print("=== Database Performance Optimization Demo ===")
+    
+    # Setup monitoring
+    monitor = DatabasePerformanceMonitor(session.bind)
+    
+    # Simulate some queries
+    print("\n1. Running sample queries...")
+    users = session.query(User).limit(10).all()
+    orders = session.query(Order).join(User).limit(20).all()
+    
+    # Get performance report
+    print("\n2. Performance Report:")
+    report = monitor.get_performance_report()
+    for query_type, stats in report['query_statistics'].items():
+        print(f"   {query_type}: {stats['count']} queries, avg {stats['avg_time']:.3f}s")
+    
+    # Get optimization suggestions
+    print("\n3. Optimization Suggestions:")
+    suggestions = monitor.suggest_optimizations()
+    for suggestion in suggestions:
+        print(f"   • {suggestion}")
+    
+    # Index analysis
+    print("\n4. Index Analysis:")
+    optimizer = IndexOptimizer(session)
+    missing_indexes = optimizer.analyze_missing_indexes('users')
+    for index_info in missing_indexes[:3]:  # Show top 3
+        print(f"   Missing index suggestion: {index_info['suggestion']}")
+    
+    # Memory optimization demo
+    print("\n5. Memory Optimization:")
+    memory_optimizer = MemoryOptimizedQuery(session)
+    
+    def sample_processor(batch):
+        print(f"   Processing batch of {len(batch)} records")
+    
+    if session.query(User).count() > 0:
+        processed = memory_optimizer.process_large_table(User, sample_processor, 5)
+        print(f"   Processed {processed} total records in batches")
+```
+
+---
+
+## Chapter 14: Advanced Patterns and Techniques
+
+### 14.1 Custom Types and Validators
+
+```python
+from sqlalchemy import TypeDecorator, String, Integer, DateTime, Text
+from sqlalchemy.types import UserDefinedType
+from sqlalchemy.orm import validates
+import json
+import uuid
+from datetime import datetime
+from typing import Any, Optional
+import hashlib
+import re
+
+# Custom column types
+class JSONType(TypeDecorator):
+    """Custom JSON column type with automatic serialization"""
+    
+    impl = Text
+    cache_ok = True
+    
+    def process_bind_param(self, value, dialect):
+        """Convert Python object to JSON string for storage"""
+        if value is not None:
+            return json.dumps(value, default=str)
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """Convert JSON string back to Python object"""
+        if value is not None:
+            return json.loads(value)
+        return value
+
+class EncryptedType(TypeDecorator):
+    """Custom encrypted column type"""
+    
+    impl = String
+    cache_ok = True
+    
+    def __init__(self, secret_key: str, **kwargs):
+        self.secret_key = secret_key
+        super().__init__(**kwargs)
+    
+    def process_bind_param(self, value, dialect):
+        """Encrypt value before storage"""
+        if value is not None:
+            # Simple encryption (use proper encryption in production)
+            import hashlib
+            return hashlib.sha256((str(value) + self.secret_key).encode()).hexdigest()
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """Return encrypted value (can't decrypt with SHA256)"""
+        # In real implementation, use reversible encryption
+        return value
+
+class UUIDType(TypeDecorator):
+    """Custom UUID column type"""
+    
+    impl = String(36)
+    cache_ok = True
+    
+    def process_bind_param(self, value, dialect):
+        """Convert UUID to string"""
+        if value is not None:
+            return str(value)
+        return value
+    
+    def process_result_value(self, value, dialect):
+        """Convert string back to UUID"""
+        if value is not None:
+            return uuid.UUID(value)
+        return value
+
+class EmailType(TypeDecorator):
+    """Custom email column type with validation"""
+    
+    impl = String(255)
+    cache_ok = True
+    
+    EMAIL_REGEX = re.compile(r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$')
+    
+    def process_bind_param(self, value, dialect):
+        """Validate and normalize email before storage"""
+        if value is not None:
+            # Normalize to lowercase
+            email = str(value).strip().lower()
+            
+            # Validate format
+            if not self.EMAIL_REGEX.match(email):
+                raise ValueError(f"Invalid email format: {value}")
+            
+            return email
+        return value
+
+# Advanced model with custom types and validators
+class AdvancedUser(Base):
+    """User model with advanced features"""
+    
+    __tablename__ = 'advanced_users'
+    
+    id = Column(UUIDType, primary_key=True, default=uuid.uuid4)
+    email = Column(EmailType, unique=True, nullable=False)
+    password_hash = Column(EncryptedType('secret_key'))
+    profile = Column(JSONType)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime)
+    login_attempts = Column(Integer, default=0)
+    is_locked = Column(Boolean, default=False)
+    
+    # Audit fields
+    created_by = Column(String(100))
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = Column(String(100))
+    version = Column(Integer, default=1)
+    
+    @validates('email')
+    def validate_email(self, key, email):
+        """Additional email validation"""
+        if not email:
+            raise ValueError("Email is required")
+        
+        # Check for common typos
+        common_typos = {
+            'gmail.co': 'gmail.com',
+            'yahoo.co': 'yahoo.com',
+            'hotmail.co': 'hotmail.com'
+        }
+        
+        for typo, correction in common_typos.items():
+            if typo in email:
+                suggested = email.replace(typo, correction)
+                raise ValueError(f"Possible typo in email. Did you mean: {suggested}?")
+        
+        return email
+    
+    @validates('profile')
+    def validate_profile(self, key, profile):
+        """Validate profile JSON structure"""
+        if profile is not None:
+            required_fields = ['first_name', 'last_name']
+            for field in required_fields:
+                if field not in profile:
+                    raise ValueError(f"Profile missing required field: {field}")
+        
+        return profile
+    
+    def increment_login_attempts(self):
+        """Increment login attempts and lock if necessary"""
+        self.login_attempts += 1
+        if self.login_attempts >= 5:
+            self.is_locked = True
+    
+    def reset_login_attempts(self):
+        """Reset login attempts on successful login"""
+        self.login_attempts = 0
+        self.is_locked = False
+        self.last_login = datetime.utcnow()
+    
+    def to_dict(self, include_sensitive=False):
+        """Convert to dictionary for JSON serialization"""
+        data = {
+            'id': str(self.id),
+            'email': self.email,
+            'profile': self.profile,
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'last_login': self.last_login.isoformat() if self.last_login else None,
+            'is_locked': self.is_locked
+        }
+        
+        if include_sensitive:
+            data.update({
+                'login_attempts': self.login_attempts,
+                'password_hash': self.password_hash
+            })
+        
+        return data
+
+# Model versioning and auditing
+class AuditMixin:
+    """Mixin for automatic audit trail"""
+    
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_by = Column(String(100))
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = Column(String(100))
+    version = Column(Integer, default=1)
+    
+    def increment_version(self):
+        """Increment version on update"""
+        self.version += 1
+        self.updated_at = datetime.utcnow()
+
+class SoftDeleteMixin:
+    """Mixin for soft delete functionality"""
+    
+    deleted_at = Column(DateTime)
+    deleted_by = Column(String(100))
+    is_deleted = Column(Boolean, default=False)
+    
+    def soft_delete(self, deleted_by: str = None):
+        """Mark record as deleted without removing from database"""
+        self.is_deleted = True
+        self.deleted_at = datetime.utcnow()
+        self.deleted_by = deleted_by
+    
+    def restore(self):
+        """Restore soft-deleted record"""
+        self.is_deleted = False
+        self.deleted_at = None
+        self.deleted_by = None
+
+# Advanced query patterns
+class AdvancedQueryPatterns:
+    """Advanced querying techniques and patterns"""
+    
+    def __init__(self, session):
+        self.session = session
+    
+    def fuzzy_search(self, model_class, field, search_term, threshold=0.7):
+        """Fuzzy string matching for search"""
+        
+        # PostgreSQL-specific fuzzy search using similarity
+        if self.session.bind.dialect.name == 'postgresql':
+            from sqlalchemy import text, func
+            
+            # Enable fuzzy string extension
+            self.session.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm"))
+            
+            query = (
+                self.session.query(model_class)
+                .filter(func.similarity(field, search_term) > threshold)
+                .order_by(func.similarity(field, search_term).desc())
+            )
+            
+            return query.all()
+        
+        # Fallback for other databases
+        return (
+            self.session.query(model_class)
+            .filter(field.ilike(f'%{search_term}%'))
+            .all()
+        )
+    
+    def full_text_search(self, model_class, fields, search_term):
+        """Full-text search across multiple fields"""
+        
+        if self.session.bind.dialect.name == 'postgresql':
+            from sqlalchemy import func, text
+            
+            # Create search vector from multiple fields
+            search_vector = func.to_tsvector(
+                'english',
+                func.concat_ws(' ', *fields)
+            )
+            
+            search_query = func.plainto_tsquery('english', search_term)
+            
+            query = (
+                self.session.query(
+                    model_class,
+                    func.ts_rank(search_vector, search_query).label('rank')
+                )
+                .filter(search_vector.match(search_term))
+                .order_by(text('rank DESC'))
+            )
+            
+            return query.all()
+        
+        # Fallback implementation
+        from sqlalchemy import or_
+        
+        conditions = [field.ilike(f'%{search_term}%') for field in fields]
+        return (
+            self.session.query(model_class)
+            .filter(or_(*conditions))
+            .all()
+        )
+    
+    def temporal_queries(self, model_class, date_field, period='month'):
+        """Query data grouped by time periods"""
+        
+        from sqlalchemy import func, extract
+        
+        if period == 'month':
+            period_func = func.date_trunc('month', date_field)
+        elif period == 'week':
+            period_func = func.date_trunc('week', date_field)
+        elif period == 'day':
+            period_func = func.date_trunc('day', date_field)
+        else:
+            period_func = date_field
+        
+        query = (
+            self.session.query(
+                period_func.label('period'),
+                func.count().label('count')
+            )
+            .group_by('period')
+            .order_by('period')
+        )
+        
+        return query.all()
+    
+    def hierarchical_queries(self, model_class, parent_id_field, target_id):
+        """Query hierarchical data (tree structures)"""
+        
+        # Simple recursive approach for small datasets
+        def get_descendants(parent_id, level=0, max_level=10):
+            if level > max_level:  # Prevent infinite recursion
+                return []
+            
+            children = (
+                self.session.query(model_class)
+                .filter(parent_id_field == parent_id)
+                .all()
+            )
+            
+            result = []
+            for child in children:
+                result.append((child, level))
+                # Recursively get descendants
+                result.extend(get_descendants(child.id, level + 1, max_level))
+            
+            return result
+        
+        return get_descendants(target_id)
+
+# Connection and session management patterns
+class SessionManager:
+    """Advanced session management patterns"""
+    
+    def __init__(self, engine):
+        self.engine = engine
+        self.SessionLocal = sessionmaker(bind=engine)
+    
+    def read_only_session(self):
+        """Create read-only session for queries"""
+        session = self.SessionLocal()
+        session.connection(execution_options={'isolation_level': 'AUTOCOMMIT'})
+        return session
+    
+    def batch_session(self, batch_size=1000):
+        """Session optimized for batch operations"""
+        session = self.SessionLocal()
+        # Disable autoflush for performance
+        session.autoflush = False
+        return session
+    
+    def transactional_session(self):
+        """Session with explicit transaction management"""
+        session = self.SessionLocal()
+        session.begin()
+        return session
+
+class DatabaseSharding:
+    """Implement database sharding patterns"""
+    
+    def __init__(self, shard_engines):
+        self.shard_engines = shard_engines
+        self.shard_count = len(shard_engines)
+    
+    def get_shard_key(self, user_id):
+        """Determine shard based on user ID"""
+        return hash(str(user_id)) % self.shard_count
+    
+    def get_session_for_user(self, user_id):
+        """Get session for specific user's shard"""
+        shard_key = self.get_shard_key(user_id)
+        engine = self.shard_engines[shard_key]
+        SessionLocal = sessionmaker(bind=engine)
+        return SessionLocal()
+    
+    def query_all_shards(self, query_func):
+        """Execute query across all shards and combine results"""
+        results = []
+        
+        for engine in self.shard_engines:
+            SessionLocal = sessionmaker(bind=engine)
+            session = SessionLocal()
+            try:
+                shard_results = query_func(session)
+                results.extend(shard_results)
+            finally:
+                session.close()
+        
+        return results
+
+def demonstrate_advanced_patterns(session):
+    """Demonstrate advanced SQLAlchemy patterns"""
+    
+    print("=== Advanced SQLAlchemy Patterns Demo ===")
+    
+    # Custom types demonstration
+    print("\n1. Custom Types:")
+    try:
+        # Create advanced user
+        advanced_user = AdvancedUser(
+            email="test@example.com",
+            profile={'first_name': 'John', 'last_name': 'Doe', 'age': 30},
+            created_by='system'
+        )
+        
+        session.add(advanced_user)
+        session.commit()
+        
+        print(f"   Created user with UUID: {advanced_user.id}")
+        print(f"   Profile JSON: {advanced_user.profile}")
+        
+    except Exception as e:
+        session.rollback()
+        print(f"   Error: {e}")
+    
+    # Advanced query patterns
+    print("\n2. Advanced Query Patterns:")
+    query_patterns = AdvancedQueryPatterns(session)
+    
+    # Fuzzy search example
+    fuzzy_results = query_patterns.fuzzy_search(User, User.username, 'john', 0.5)
+    print(f"   Fuzzy search results: {len(fuzzy_results)}")
+    
+    # Temporal queries
+    if session.query(User).count() > 0:
+        temporal_results = query_patterns.temporal_queries(User, User.created_at, 'month')
+        print(f"   Temporal query results: {len(temporal_results)}")
+    
+    print("\n3. Session Management:")
+    session_manager = SessionManager(session.bind)
+    
+    # Read-only session
+    readonly_session = session_manager.read_only_session()
+    user_count = readonly_session.query(User).count()
+    readonly_session.close()
+    print(f"   Read-only query result: {user_count} users")
+    
+    print("   Advanced patterns demonstration completed!")
+```
+
+---
+
+## Chapter 15: Integration with Web Frameworks
+
+### 15.1 FastAPI Integration
+
+```python
+from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlalchemy.orm import Session
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from pydantic import BaseModel
+from typing import List, Optional
+import uvicorn
+
+# FastAPI + SQLAlchemy setup
+DATABASE_URL = "sqlite:///./fastapi_example.db"
+engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Create tables
+Base.metadata.create_all(bind=engine)
+
+# FastAPI app
+app = FastAPI(title="SQLAlchemy + FastAPI", version="1.0.0")
+security = HTTPBearer()
+
+# Pydantic models for API
+class UserCreate(BaseModel):
+    username: str
+    email: str
+    full_name: Optional[str] = None
+
+class UserResponse(BaseModel):
+    id: int
+    username: str
+    email: str
+    full_name: Optional[str]
+    is_active: bool
+    
+    class Config:
+        orm_mode = True
+
+class UserUpdate(BaseModel):
+    username: Optional[str] = None
+    email: Optional[str] = None
+    full_name: Optional[str] = None
+    is_active: Optional[bool] = None
+
+# Dependency injection
+def get_db():
+    """Get database session"""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+    db: Session = Depends(get_db)
+):
+    """Get current authenticated user"""
+    # Simple token validation (implement proper JWT in production)
+    token = credentials.credentials
+    
+    if token != "valid-token":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid authentication credentials"
+        )
+    
+    # Return user or raise exception
+    user = db.query(User).filter(User.id == 1).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    return user
+
+# API endpoints
+@app.post("/users/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
+async def create_user(user: UserCreate, db: Session = Depends(get_db)):
+    """Create a new user"""
+    
+    # Check if user already exists
+    db_user = db.query(User).filter(User.email == user.email).first()
+    if db_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Email already registered"
+        )
+    
+    # Create new user
+    db_user = User(**user.dict())
+    db.add(db_user)
+    db.commit()
+    db.refresh(db_user)
+    
+    return db_user
+
+@app.get("/users/", response_model=List[UserResponse])
+async def list_users(
+    skip: int = 0, 
+    limit: int = 100, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """List all users"""
+    users = db.query(User).offset(skip).limit(limit).all()
+    return users
+
+@app.get("/users/{user_id}", response_model=UserResponse)
+async def get_user(user_id: int, db: Session = Depends(get_db)):
+    """Get user by ID"""
+    user = db.query(User).filter(User.id == user_id).first()
+    if user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    return user
+
+@app.put("/users/{user_id}", response_model=UserResponse)
+async def update_user(
+    user_id: int, 
+    user_update: UserUpdate, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Update user"""
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if db_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    # Update only provided fields
+    update_data = user_update.dict(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(db_user, field, value)
+    
+    db.commit()
+    db.refresh(db_user)
+    return db_user
+
+@app.delete("/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_user(
+    user_id: int, 
+    db: Session = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Delete user"""
+    db_user = db.query(User).filter(User.id == user_id).first()
+    if db_user is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    db.delete(db_user)
+    db.commit()
+
+# Health check endpoint
+@app.get("/health")
+async def health_check(db: Session = Depends(get_db)):
+    """Health check endpoint"""
+    try:
+        # Test database connection
+        db.execute("SELECT 1")
+        return {"status": "healthy", "database": "connected"}
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}
+
+# Advanced FastAPI features
+@app.middleware("http")
+async def add_db_session_middleware(request, call_next):
+    """Add database session to request context"""
+    response = await call_next(request)
+    return response
+
+# Background tasks with SQLAlchemy
+from fastapi import BackgroundTasks
+
+@app.post("/users/{user_id}/send-email")
+async def send_user_email(
+    user_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """Send email to user (background task)"""
+    
+    user = db.query(User).filter(User.id == user_id).first()
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    def send_email_task(email: str, username: str):
+        """Background task to send email"""
+        # Simulate email sending
+        import time
+        time.sleep(2)  # Simulate email service delay
+        print(f"Email sent to {email} for user {username}")
+    
+    background_tasks.add_task(send_email_task, user.email, user.username)
+    return {"message": "Email will be sent in the background"}
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+```
+
+### 15.2 Flask Integration
+
+```python
+from flask import Flask, request, jsonify, g
+from flask_sqlalchemy import SQLAlchemy
+from flask_migrate import Migrate
+from flask_jwt_extended import JWTManager, create_access_token, jwt_required, get_jwt_identity
+from werkzeug.security import generate_password_hash, check_password_hash
+from datetime import datetime, timedelta
+import os
+
+# Flask app setup
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///flask_example.db'
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+app.config['JWT_SECRET_KEY'] = 'your-secret-key'  # Change in production
+app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=1)
+
+# Extensions
+db = SQLAlchemy(app)
+migrate = Migrate(app, db)
+jwt = JWTManager(app)
+
+# Flask-SQLAlchemy models
+class FlaskUser(db.Model):
+    """User model for Flask integration"""
+    
+    __tablename__ = 'flask_users'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    username = db.Column(db.String(80), unique=True, nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=False)
+    password_hash = db.Column(db.String(128))
+    full_name = db.Column(db.String(100))
+    is_active = db.Column(db.Boolean, default=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    # Relationships
+    posts = db.relationship('FlaskPost', backref='author', lazy='dynamic')
+    
+    def set_password(self, password):
+        """Set password hash"""
+        self.password_hash = generate_password_hash(password)
+    
+    def check_password(self, password):
+        """Check password"""
+        return check_password_hash(self.password_hash, password)
+    
+    def to_dict(self):
+        """Convert to dictionary"""
+        return {
+            'id': self.id,
+            'username': self.username,
+            'email': self.email,
+            'full_name': self.full_name,
+            'is_active': self.is_active,
+            'created_at': self.created_at.isoformat(),
+            'posts_count': self.posts.count()
+        }
+
+class FlaskPost(db.Model):
+    """Post model for Flask integration"""
+    
+    __tablename__ = 'flask_posts'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(100), nullable=False)
+    content = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    # Foreign key
+    user_id = db.Column(db.Integer, db.ForeignKey('flask_users.id'), nullable=False)
+    
+    def to_dict(self):
+        """Convert to dictionary"""
+        return {
+            'id': self.id,
+            'title': self.title,
+            'content': self.content,
+            'created_at': self.created_at.isoformat(),
+            'updated_at': self.updated_at.isoformat(),
+            'author': self.author.username if self.author else None
+        }
+
+# Request context and error handling
+@app.before_request
+def before_request():
+    """Before each request"""
+    g.request_start_time = datetime.utcnow()
+
+@app.after_request
+def after_request(response):
+    """After each request"""
+    if hasattr(g, 'request_start_time'):
+        duration = datetime.utcnow() - g.request_start_time
+        app.logger.info(f"Request completed in {duration.total_seconds():.3f}s")
+    return response
+
+@app.errorhandler(404)
+def not_found(error):
+    """404 error handler"""
+    return jsonify({'error': 'Not found'}), 404
+
+@app.errorhandler(400)
+def bad_request(error):
+    """400 error handler"""
+    return jsonify({'error': 'Bad request'}), 400
+
+@app.errorhandler(500)
+def internal_error(error):
+    """500 error handler"""
+    db.session.rollback()
+    return jsonify({'error': 'Internal server error'}), 500
+
+# Authentication endpoints
+@app.route('/api/register', methods=['POST'])
+def register():
+    """Register new user"""
+    data = request.get_json()
+    
+    if not data or not data.get('username') or not data.get('password'):
+        return jsonify({'error': 'Username and password required'}), 400
+    
+    # Check if user exists
+    if FlaskUser.query.filter_by(username=data['username']).first():
+        return jsonify({'error': 'Username already exists'}), 400
+    
+    if FlaskUser.query.filter_by(email=data.get('email')).first():
+        return jsonify({'error': 'Email already exists'}), 400
+    
+    # Create user
+    user = FlaskUser(
+        username=data['username'],
+        email=data.get('email', ''),
+        full_name=data.get('full_name', '')
+    )
+    user.set_password(data['password'])
+    
+    db.session.add(user)
+    db.session.commit()
+    
+    return jsonify(user.to_dict()), 201
+
+@app.route('/api/login', methods=['POST'])
+def login():
+    """Login user"""
+    data = request.get_json()
+    
+    if not data or not data.get('username') or not data.get('password'):
+        return jsonify({'error': 'Username and password required'}), 400
+    
+    user = FlaskUser.query.filter_by(username=data['username']).first()
+    
+    if user and user.check_password(data['password']):
+        access_token = create_access_token(identity=user.id)
+        return jsonify({
+            'access_token': access_token,
+            'user': user.to_dict()
+        })
+    
+    return jsonify({'error': 'Invalid credentials'}), 401
+
+# User endpoints
+@app.route('/api/users', methods=['GET'])
+@jwt_required()
+def list_users():
+    """List all users"""
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 10, type=int), 100)
+    
+    users = FlaskUser.query.paginate(
+        page=page, 
+        per_page=per_page, 
+        error_out=False
+    )
+    
+    return jsonify({
+        'users': [user.to_dict() for user in users.items],
+        'pagination': {
+            'page': users.page,
+            'pages': users.pages,
+            'per_page': users.per_page,
+            'total': users.total,
+            'has_next': users.has_next,
+            'has_prev': users.has_prev
+        }
+    })
+
+@app.route('/api/users/<int:user_id>', methods=['GET'])
+@jwt_required()
+def get_user(user_id):
+    """Get user by ID"""
+    user = FlaskUser.query.get_or_404(user_id)
+    return jsonify(user.to_dict())
+
+@app.route('/api/users/<int:user_id>', methods=['PUT'])
+@jwt_required()
+def update_user(user_id):
+    """Update user"""
+    current_user_id = get_jwt_identity()
+    
+    # Check if user can update this profile
+    if current_user_id != user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    user = FlaskUser.query.get_or_404(user_id)
+    data = request.get_json()
+    
+    # Update allowed fields
+    if 'full_name' in data:
+        user.full_name = data['full_name']
+    if 'email' in data:
+        # Check email uniqueness
+        existing_user = FlaskUser.query.filter_by(email=data['email']).first()
+        if existing_user and existing_user.id != user_id:
+            return jsonify({'error': 'Email already in use'}), 400
+        user.email = data['email']
+    
+    db.session.commit()
+    return jsonify(user.to_dict())
+
+# Post endpoints
+@app.route('/api/posts', methods=['POST'])
+@jwt_required()
+def create_post():
+    """Create new post"""
+    current_user_id = get_jwt_identity()
+    data = request.get_json()
+    
+    if not data or not data.get('title') or not data.get('content'):
+        return jsonify({'error': 'Title and content required'}), 400
+    
+    post = FlaskPost(
+        title=data['title'],
+        content=data['content'],
+        user_id=current_user_id
+    )
+    
+    db.session.add(post)
+    db.session.commit()
+    
+    return jsonify(post.to_dict()), 201
+
+@app.route('/api/posts', methods=['GET'])
+def list_posts():
+    """List all posts"""
+    page = request.args.get('page', 1, type=int)
+    per_page = min(request.args.get('per_page', 10, type=int), 100)
+    
+    posts = FlaskPost.query.order_by(FlaskPost.created_at.desc()).paginate(
+        page=page,
+        per_page=per_page,
+        error_out=False
+    )
+    
+    return jsonify({
+        'posts': [post.to_dict() for post in posts.items],
+        'pagination': {
+            'page': posts.page,
+            'pages': posts.pages,
+            'per_page': posts.per_page,
+            'total': posts.total
+        }
+    })
+
+@app.route('/api/posts/<int:post_id>', methods=['GET'])
+def get_post(post_id):
+    """Get post by ID"""
+    post = FlaskPost.query.get_or_404(post_id)
+    return jsonify(post.to_dict())
+
+@app.route('/api/posts/<int:post_id>', methods=['PUT'])
+@jwt_required()
+def update_post(post_id):
+    """Update post"""
+    current_user_id = get_jwt_identity()
+    post = FlaskPost.query.get_or_404(post_id)
+    
+    # Check if user owns this post
+    if post.user_id != current_user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    data = request.get_json()
+    
+    if 'title' in data:
+        post.title = data['title']
+    if 'content' in data:
+        post.content = data['content']
+    
+    post.updated_at = datetime.utcnow()
+    db.session.commit()
+    
+    return jsonify(post.to_dict())
+
+@app.route('/api/posts/<int:post_id>', methods=['DELETE'])
+@jwt_required()
+def delete_post(post_id):
+    """Delete post"""
+    current_user_id = get_jwt_identity()
+    post = FlaskPost.query.get_or_404(post_id)
+    
+    # Check if user owns this post
+    if post.user_id != current_user_id:
+        return jsonify({'error': 'Unauthorized'}), 403
+    
+    db.session.delete(post)
+    db.session.commit()
+    
+    return '', 204
+
+# Health check
+@app.route('/api/health')
+def health_check():
+    """Health check endpoint"""
+    try:
+        # Test database connection
+        db.session.execute('SELECT 1')
+        return jsonify({
+            'status': 'healthy',
+            'database': 'connected',
+            'timestamp': datetime.utcnow().isoformat()
+        })
+    except Exception as e:
+        return jsonify({
+            'status': 'unhealthy',
+            'error': str(e),
+            'timestamp': datetime.utcnow().isoformat()
+        }), 500
+
+# CLI commands for database management
+@app.cli.command()
+def init_db():
+    """Initialize database"""
+    db.create_all()
+    print("Database initialized!")
+
+@app.cli.command()
+def seed_data():
+    """Seed database with sample data"""
+    
+    # Create sample user
+    user = FlaskUser(
+        username='admin',
+        email='admin@example.com',
+        full_name='Administrator'
+    )
+    user.set_password('admin123')
+    
+    db.session.add(user)
+    db.session.commit()
+    
+    # Create sample post
+    post = FlaskPost(
+        title='Welcome to the Blog',
+        content='This is a sample blog post created during database seeding.',
+        user_id=user.id
+    )
+    
+    db.session.add(post)
+    db.session.commit()
+    
+    print("Sample data created!")
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    
+    app.run(debug=True)
+```
+
+---
+
+This completes the comprehensive SQLAlchemy guide with all 15 chapters! The guide now covers:
+
+✅ **Complete Chapters 1-15:**
+- Chapters 1-10: Foundation and core concepts (already existed)
+- **Chapter 11**: Advanced Query Techniques (window functions, CTEs, complex joins)
+- **Chapter 12**: Database Migrations with Alembic (migration management, data migrations)
+- **Chapter 13**: Performance Optimization (monitoring, indexing, query optimization)
+- **Chapter 14**: Advanced Patterns (custom types, validators, sharding, session management)  
+- **Chapter 15**: Web Framework Integration (FastAPI and Flask with SQLAlchemy)
+
+The SQLAlchemy guide is now complete and comprehensive, covering everything from basic concepts through advanced enterprise patterns and web framework integration!
